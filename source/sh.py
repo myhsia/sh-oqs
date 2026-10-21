@@ -16,7 +16,7 @@ from pltools import parse_xlims
 
 
 # Run selection — comment out entries to skip.
-METHODS = ["fssh"] # "mash" is also available
+METHODS = ["fssh", "mash"]
 CASES   = ["qhm", "qah", "chm", "cah"]
 
 # Per-method trajectory budgets (used when ``-n_traj`` is not given).
@@ -151,16 +151,16 @@ def _case_job(spec):
 
 RUNLIST = [
     "A-base_line",
-    "B-slow_system",
-    "C-no_bias",
-    "D-strong_tunneling",
-    "E-fast_bath",
-    "F-slow_bath",
-    "G-lowT",
-    "H-highT",
-    "I-weak_coupling",
-    "J-strong_coupling",
-    "K-linear_quad",
+    # "B-slow_system",
+    # "C-no_bias",
+    # "D-strong_tunneling",
+    # "E-fast_bath",
+    # "F-slow_bath",
+    # "G-lowT",
+    # "H-highT",
+    # "I-weak_coupling",
+    # "J-strong_coupling",
+    # "K-linear_quad",
 ]
 def run(prefix: str, methods = METHODS, cases = CASES, n_traj = None,
         N: int = 200, wmax_factor: float = 10.0, dt: float = 0.005,
@@ -183,9 +183,8 @@ def run(prefix: str, methods = METHODS, cases = CASES, n_traj = None,
         n_inner = max(1, (os.cpu_count() or 1) // workers)
     for method in methods:
         nt = N_TRAJ[method] if n_traj is None else n_traj
-        inner = n_inner if method != "mash" else 1   # MASH has no inner pool
         specs = [(prefix, method, *_CASE_MATRIX[case], nt, N, wmax_factor,
-                  dt, seed, inner) for case in cases]
+                  dt, seed, n_inner) for case in cases]
         if workers == 1 or len(specs) == 1:
             for spec in specs:
                 t, tag, res = _compute(*spec)

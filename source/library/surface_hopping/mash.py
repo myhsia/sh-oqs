@@ -18,12 +18,14 @@ and rescale the momentum along the NAC direction to conserve energy.
 """
 
 import os, sys
+import multiprocessing
+from concurrent.futures import ProcessPoolExecutor
 import numpy as np
 from numba import njit
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from qutils import sample_bath, Pauli, basis, qubit
-from surface_hopping.fssh import _rescale_momentum
+from surface_hopping.fssh import _rescale_momentum, _sizes, _spawn_seeds
 
 
 @njit(cache=True, fastmath=True)
@@ -411,26 +413,9 @@ def _unique_ops(ops):
     return uniq, idx
 
 
-def run_correlations(epsilon, Delta, omega, c, beta, tlist, pairs,
-                     quantum=True, anharmon=0.0, n_traj=4000, rng=None, seed=None,
-                     model=None):
-    """MASH correlations ``C_AB(t) = Tr[B U(t) A_op (x) rho_B]`` for many
-    operator pairs in a *single* trajectory ensemble.
-
-    Parameters
-    ----------
-    pairs : sequence of ``(A_op, B_op)`` 2x2 arrays (diabatic basis)
-        ``A_op`` sets the time-zero electronic operator, ``B_op`` the measured
-        one (Eq. 28).  ``B`` is measured at each ``tlist`` entry.
-
-    Returns
-    -------
-    list of (nT,) complex ndarray, one per pair (unnormalised).
-    """
-    if rng is None:
-        rng = np.random.default_rng(seed)
-    if model is None:
-        model = _model_default(epsilon)
+def _accumulate_mash(epsilon, Delta, omega, c, beta, tlist, pairs, model,
+                     quantum, anharmon, rng, n_traj):
+    """Unnormalised MASH estimator sum over ``n_traj`` trajectories."""
     A_list, A_idx = _unique_ops([p[0] for p in pairs])
     B_list, B_idx = _unique_ops([p[1] for p in pairs])
     nPairs = len(pairs)
@@ -467,6 +452,56 @@ def run_correlations(epsilon, Delta, omega, c, beta, tlist, pairs,
                                   for ll in range(4)], dtype=complex)
                 acc[ip] += sum(inner[ll]*b[ll]*g[ll] for ll in range(4))
         m += k
+    return acc
+
+
+def _slice_mash(args):
+    """One ensemble slice (module level, so the pool worker is picklable)."""
+    (epsilon, Delta, omega, c, beta, tlist, pairs, model,
+     quantum, anharmon, seed, m) = args
+    return _accumulate_mash(epsilon, Delta, omega, c, beta, tlist, pairs, model,
+                            quantum, anharmon, np.random.default_rng(seed), m)
+
+
+def run_correlations(epsilon, Delta, omega, c, beta, tlist, pairs,
+                     quantum=True, anharmon=0.0, n_traj=4000, rng=None, seed=None,
+                     model=None, n_jobs=1):
+    """MASH correlations ``C_AB(t) = Tr[B U(t) A_op (x) rho_B]`` for many
+    operator pairs in a *single* trajectory ensemble.
+
+    Parameters
+    ----------
+    pairs : sequence of ``(A_op, B_op)`` 2x2 arrays (diabatic basis)
+        ``A_op`` sets the time-zero electronic operator, ``B_op`` the measured
+        one (Eq. 28).  ``B`` is measured at each ``tlist`` entry.
+    n_jobs : int
+        ``> 1`` runs independent slices in parallel processes (deterministic
+        per-slice seeds); ``1`` uses the serial loop.
+
+    Returns
+    -------
+    list of (nT,) complex ndarray, one per pair (unnormalised).
+    """
+    if model is None:
+        model = _model_default(epsilon)
+    nPairs = len(pairs)
+
+    if n_jobs > 1 and n_traj > 1:
+        sizes = _sizes(n_traj, 4 * n_jobs)
+        seeds = _spawn_seeds(rng, seed, len(sizes))
+        args = [(epsilon, Delta, omega, c, beta, tlist, pairs, model,
+                 quantum, anharmon, seeds[i], m)
+                for i, m in enumerate(sizes) if m > 0]
+        with ProcessPoolExecutor(max_workers = n_jobs,
+                mp_context = multiprocessing.get_context("fork")) as pool:
+            parts = list(pool.map(_slice_mash, args))
+        acc = np.sum(parts, axis = 0)
+        return [2.0 * acc[ip] / n_traj for ip in range(nPairs)]
+
+    if rng is None:
+        rng = np.random.default_rng(seed)
+    acc = _accumulate_mash(epsilon, Delta, omega, c, beta, tlist, pairs, model,
+                           quantum, anharmon, rng, n_traj)
     return [2.0 * acc[ip] / n_traj for ip in range(nPairs)]
 
 
@@ -507,7 +542,7 @@ def _standard_pairs():
 
 def run_observables(epsilon, Delta, omega, c, beta, tlist,
                     quantum=True, anharmon=0.0, n_traj=4000, rng=None, seed=None,
-                    model=None):
+                    model=None, n_jobs=1):
     """All MKCT observables in one MASH ensemble.
 
     ``model`` selects the adiabatic model (default LSBM); see
@@ -517,7 +552,8 @@ def run_observables(epsilon, Delta, omega, c, beta, tlist,
     keys = ["pop0", "pop1", "cohe_p", "cohe_m", "Cmu", "Cx"]
     Cs = run_correlations(epsilon, Delta, omega, c, beta, tlist, [pairs[k] for k in keys],
                           quantum=quantum, anharmon=anharmon,
-                          n_traj=n_traj, rng=rng, seed=seed, model=model)
+                          n_traj=n_traj, rng=rng, seed=seed, model=model,
+                          n_jobs=n_jobs)
     C = dict(zip(keys, Cs))
     Cmu = C["Cmu"]
     if Cmu[0] != 0:

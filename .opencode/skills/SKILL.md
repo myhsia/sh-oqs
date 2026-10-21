@@ -30,13 +30,14 @@ distribution with the quantum thermal variance, a **classical** case from the cl
 
 - `library/surface_hopping/fssh.py` — fewest-switches
   surface hopping (the enabled method).
-- `library/surface_hopping/mash.py` — MASH, retained but
-  **disabled** (`METHODS = ["fssh"]` in `sh.py`).
+- `library/surface_hopping/mash.py` — the mapping approach to
+  surface hopping; both methods are enabled (`METHODS = ["fssh", "mash"]` in `sh.py`) and share
+  the same `n_jobs` slice parallelization.
 - The drivers use numba-jitted kernels; the trajectory loop is the expensive part.
 
 `sh.py` runs the selected methods and cases for each config in its `RUNLIST` and writes
 `output/data/<prefix>/{pop,cohe,cohem,corr,xorr}_<method>_<case>.npz` (the shared `save_time`
-schema, `<method>` = `fssh`).
+schema, `<method>` = `fssh` or `mash`).
 
 ## Conventions
 
@@ -71,13 +72,14 @@ python library/surface_hopping/validation.py   # regression suite
 ```
 
 CI: `.github/workflows/ci.yaml` (syntax + regression suite) and
-`.github/workflows/data.yaml` (manual matrix over `<config> x <case>`).  Each data job uploads
-`data/<config>/*.npz` as `sh-<config>-<case>`, and a `combine` job packs the whole run into the
-`sh-data` tarball (retained 30 days).  The repository is public, so the runner minutes are free and
+`.github/workflows/data.yaml` (manual matrix over `<config> x <case> x <method>`).  Each data job
+uploads `data/<config>/*.npz` as `sh-<config>-<case>-<method>`, and a `combine` job packs the whole
+run into the `sh-data` tarball (retained 30 days).  Defaults: `configs=A-base_line` (the other
+scenarios stay commented out in `RUNLIST` while the pipeline is being tuned), `methods="fssh mash"`.  The repository is public, so the runner minutes are free and
 the full production data is generated on CI rather than locally:
 
 ```bash
-gh workflow run data.yaml                       # whole RUNLIST x four cases
+gh workflow run data.yaml                       # defaults: A-base_line x 4 cases x 2 methods
 gh run watch <id> --exit-status
 gh run download <id> -n sh-data -D /tmp
 tar -xzf /tmp/sh-data/sh-data.tar.gz -C source/output/data/   # -> source/output/data/<config>/

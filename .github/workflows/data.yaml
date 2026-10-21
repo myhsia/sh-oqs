@@ -4,15 +4,19 @@ on:
   workflow_dispatch:
     inputs:
       configs:
-        description: "Space-separated config prefixes (default: the whole RUNLIST, A to K)."
+        description: "Space-separated config prefixes (default: A-base_line)."
         required: false
         default: ""
       cases:
         description: "Space-separated cases (default: qhm qah chm cah)."
         required: false
         default: "qhm qah chm cah"
+      methods:
+        description: "Space-separated methods (default: fssh mash)."
+        required: false
+        default: "fssh mash"
       n_traj:
-        description: "Trajectories (empty: the per-method N_TRAJ budget, 20000)."
+        description: "Trajectories (empty: the per-method N_TRAJ budget)."
         required: false
         default: ""
       N:
@@ -39,21 +43,26 @@ jobs:
     outputs:
       configs: ${{ steps.plan.outputs.configs }}
       cases: ${{ steps.plan.outputs.cases }}
+      methods: ${{ steps.plan.outputs.methods }}
     steps:
       - uses: actions/checkout@v7
       - name: Plan the run
         id: plan
         shell: bash
         run: |
-          default="A-base_line B-slow_system C-no_bias D-strong_tunneling E-fast_bath F-slow_bath G-lowT H-highT I-weak_coupling J-strong_coupling K-linear_quad"
+          # Keep this default in step with sh.py's RUNLIST.
+          default="A-base_line"
           list="${{ inputs.configs }}"
           cases="${{ inputs.cases }}"
+          methods="${{ inputs.methods }}"
           list="${list:-$default}"
           cases="${cases:-qhm qah chm cah}"
-          python3 - "$list" "$cases" >> "$GITHUB_OUTPUT" <<'PY'
+          methods="${methods:-fssh mash}"
+          python3 - "$list" "$cases" "$methods" >> "$GITHUB_OUTPUT" <<'PY'
           import json, sys
           print("configs=" + json.dumps(sys.argv[1].split()))
           print("cases=" + json.dumps(sys.argv[2].split()))
+          print("methods=" + json.dumps(sys.argv[3].split()))
           PY
 
   build_env:
@@ -67,7 +76,7 @@ jobs:
           build: "true"
 
   sh:
-    name: sh (${{ matrix.config }} / ${{ matrix.case }})
+    name: sh (${{ matrix.config }} / ${{ matrix.case }} / ${{ matrix.method }})
     needs: [plan, build_env]
     runs-on: ubuntu-latest
     timeout-minutes: 350
@@ -77,6 +86,7 @@ jobs:
       matrix:
         config: ${{ fromJSON(needs.plan.outputs.configs) }}
         case: ${{ fromJSON(needs.plan.outputs.cases) }}
+        method: ${{ fromJSON(needs.plan.outputs.methods) }}
     defaults:
       run:
         shell: bash -el {0}
@@ -101,6 +111,7 @@ jobs:
         env:
           SH_CFG: ${{ matrix.config }}
           SH_CASE: ${{ matrix.case }}
+          SH_METHOD: ${{ matrix.method }}
           SH_NTRAJ: ${{ inputs.n_traj }}
           SH_N: ${{ inputs.N }}
           SH_NJOBS: ${{ inputs.njobs }}
@@ -112,12 +123,13 @@ jobs:
           if os.environ.get("SH_NTRAJ"): kw["n_traj"] = int(os.environ["SH_NTRAJ"])
           if os.environ.get("SH_N"):     kw["N"]      = int(os.environ["SH_N"])
           if os.environ.get("SH_NJOBS"): kw["njobs"]  = int(os.environ["SH_NJOBS"])
-          sh.run(os.environ["SH_CFG"], cases=[os.environ["SH_CASE"]], **kw)
+          sh.run(os.environ["SH_CFG"], methods=[os.environ["SH_METHOD"]],
+                 cases=[os.environ["SH_CASE"]], **kw)
           PY
       - name: Upload artifacts
         uses: actions/upload-artifact@v5
         with:
-          name: sh-${{ matrix.config }}-${{ matrix.case }}
+          name: sh-${{ matrix.config }}-${{ matrix.case }}-${{ matrix.method }}
           path: source/output/data/
           if-no-files-found: error
           retention-days: 30
@@ -130,7 +142,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v5
         with:
-          pattern: sh-*-*
+          pattern: sh-*-*-*
           path: dist
           merge-multiple: true
       - name: Pack the whole run

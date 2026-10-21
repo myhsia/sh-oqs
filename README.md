@@ -32,14 +32,15 @@ The full production run is cheaper on GitHub Actions: dispatch the `Data` workfl
 the results (public repository, so the runner minutes are free).
 
 ```bash
-gh workflow run data.yaml                     # whole RUNLIST x four cases
+gh workflow run data.yaml                     # A-base_line x 4 cases x {fssh, mash}
 gh run watch <id> --exit-status
 gh run download <id> -n sh-data -D /tmp       # or one sh-<config>-<case> artifact
 tar -xzf /tmp/sh-data/sh-data.tar.gz -C source/output/data/   # -> source/output/data/<config>/
 ```
 
-Each job handles one `<config> x <case>` and uploads `data/<config>/*.npz`; the `combine` job
-packs every job into the single `sh-data` tarball (retained 30 days).
+Each job handles one `<config> x <case> x <method>` and uploads `data/<config>/*.npz`; the
+`combine` job packs every job into the single `sh-data` tarball (retained 30 days).  Both methods
+(FSSH and MASH) are enabled; the other scenarios are commented out in `RUNLIST` for now.
 
 ## Regression suite
 
