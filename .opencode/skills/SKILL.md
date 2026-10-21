@@ -42,8 +42,13 @@ schema, `<method>` = `fssh`).
 
 - Run from `./source` with the `sh` conda environment active.
 - Selection is by the `METHODS` / `CASES` lists in `sh.py` (comment out entries) or by the
-  `-method` / `-case` CLI flags; `-n_traj` defaults to the per-method `N_TRAJ` budget
+  `-method` CLI flag; `-n_traj` defaults to the per-method `N_TRAJ` budget
   (`mash` 40000, `fssh` 20000).  Flags: `-n_traj -N -wmax_factor -dt -seed`.
+- Parallelism: `-nproc` (default 4) runs the cases as separate processes; `-njobs` (default -1)
+  splits each case's ensemble over inner workers, sharing the cores over the cases.  The workers
+  return unnormalised sums and the parent process writes every archive, so no two processes write
+  the same file.  With one case per process (`nproc >= #cases`) the inner pool is skipped, since
+  nested pools only add overhead.
 - **Caveat:** classical nuclei, so this is a cross-check rather than an exact reference;
   it is reliable mainly for slow baths and high temperature.
 - The shared `config/`, `qutils.py`, `fsutils.py` and `pltools.py` are symlinked locally from
@@ -62,4 +67,17 @@ python library/surface_hopping/validation.py   # regression suite
 ```
 
 CI: `.github/workflows/ci.yaml` (syntax + regression suite) and
-`.github/workflows/data.yaml` (matrix over `<config> x <case>`, artifacts `sh-<config>-<case>`).
+`.github/workflows/data.yaml` (manual matrix over `<config> x <case>`).  Each data job uploads
+`data/<config>/*.npz` as `sh-<config>-<case>`, and a `combine` job packs the whole run into the
+`sh-data` tarball (retained 30 days).  The repository is public, so the runner minutes are free and
+the full production data is generated on CI rather than locally:
+
+```bash
+gh workflow run data.yaml                       # whole RUNLIST x four cases
+gh run watch <id> --exit-status
+gh run download <id> -n sh-data -D /tmp
+tar -xzf /tmp/sh-data/sh-data.tar.gz -C source/output/   # -> source/output/data/<config>/
+```
+
+Inputs: `configs`, `cases`, `n_traj` (empty: the `N_TRAJ` budget), `N`, `njobs`.  There is no
+automatic trigger, because the configs are owned by the other repository.

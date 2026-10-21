@@ -20,8 +20,26 @@ python sh.py A-base_line -method fssh            # all four cases
 python sh.py A-base_line -method fssh -n_traj 20000 -N 200
 ```
 
+The four cases run as parallel processes (`-nproc`, default 4) and, when there are spare cores,
+each case splits its ensemble over inner workers (`-njobs`, default -1: share the cores).
+
 Results are written to `output/data/<prefix>/{pop,cohe,cohem,corr,xorr}_fssh_<case>.npz`
 (`t`, `y`, `identifier`).
+
+## CI data generation
+
+The full production run is cheaper on GitHub Actions: dispatch the `Data` workflow and download
+the results (public repository, so the runner minutes are free).
+
+```bash
+gh workflow run data.yaml                     # whole RUNLIST x four cases
+gh run watch <id> --exit-status
+gh run download <id> -n sh-data -D /tmp       # or one sh-<config>-<case> artifact
+tar -xzf /tmp/sh-data/sh-data.tar.gz -C source/output/   # -> source/output/data/<config>/
+```
+
+Each job handles one `<config> x <case>` and uploads `data/<config>/*.npz`; the `combine` job
+packs every job into the single `sh-data` tarball (retained 30 days).
 
 ## Regression suite
 

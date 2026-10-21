@@ -30,8 +30,11 @@ that repository out anonymously and copies them (no token).
 - Four cases: `QHM`, `QAH`, `CHM`, `CAH`; the anharmonic coefficient is `a = anharmon * sqrt(7/6)`.
 - The classical cases use the classical per-mode variance (below the quantum zero-point).
 - Linear coupling `V = sigma_z`; quadratic (`K-linear_quad`) `V = |1><1|`.
-- Selection by `METHODS`/`CASES` or `-method`/`-case`; trajectory budgets `N_TRAJ` (FSSH 20000,
+- Selection by `METHODS`/`CASES` or `-method`; trajectory budgets `N_TRAJ` (FSSH 20000,
   MASH 40000); flags `-n_traj -N -wmax_factor -dt -seed`.
+- Parallelism: `-nproc` runs the cases as separate processes (default 4), `-njobs` splits each
+  case's ensemble over inner workers (default -1: share the cores).  The parent process writes
+  every archive, so no two workers touch the same file.
 - Classical nuclei: a cross-check, reliable mainly for slow baths and high temperature.
 - Coding style: see the maintainer's shared `repo-rules` skill.
 
@@ -46,8 +49,21 @@ python library/surface_hopping/validation.py
 ## CI
 
 - `.github/workflows/ci.yaml` — syntax check and the regression suite.
-- `.github/workflows/data.yaml` — manual matrix over `<config> x <case>`; artifacts
-  `sh-<config>-<case>`.  Retrieve with `gh run download <id> -D <tmp>`.
+- `.github/workflows/data.yaml` — manual (`workflow_dispatch`) matrix over `<config> x <case>`;
+  each job writes one `<config> x <case>` and uploads `data/<config>/*.npz` as artifact
+  `sh-<config>-<case>`, and a `combine` job packs the whole run into the `sh-data` tarball
+  (both retained 30 days).  No automatic trigger: the configs live in the other repository, so a
+  config change could not fire this workflow anyway.
+
+```bash
+gh workflow run data.yaml
+gh run watch <id> --exit-status
+gh run download <id> -n sh-data -D /tmp
+tar -xzf /tmp/sh-data/sh-data.tar.gz -C source/output/   # -> source/output/data/<config>/
+```
+
+- The repository is public, so runner minutes are free; a full default run is 44 jobs
+  (`max-parallel: 10`) and takes tens of minutes.
 
 ## Git style
 
