@@ -35,7 +35,7 @@ the results (public repository, so the runner minutes are free).
 gh workflow run data.yaml                     # whole RUNLIST x four cases
 gh run watch <id> --exit-status
 gh run download <id> -n sh-data -D /tmp       # or one sh-<config>-<case> artifact
-tar -xzf /tmp/sh-data/sh-data.tar.gz -C source/output/   # -> source/output/data/<config>/
+tar -xzf /tmp/sh-data/sh-data.tar.gz -C source/output/data/   # -> source/output/data/<config>/
 ```
 
 Each job handles one `<config> x <case>` and uploads `data/<config>/*.npz`; the `combine` job

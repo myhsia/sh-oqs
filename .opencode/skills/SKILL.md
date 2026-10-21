@@ -76,7 +76,7 @@ the full production data is generated on CI rather than locally:
 gh workflow run data.yaml                       # whole RUNLIST x four cases
 gh run watch <id> --exit-status
 gh run download <id> -n sh-data -D /tmp
-tar -xzf /tmp/sh-data/sh-data.tar.gz -C source/output/   # -> source/output/data/<config>/
+tar -xzf /tmp/sh-data/sh-data.tar.gz -C source/output/data/   # -> source/output/data/<config>/
 ```
 
 Inputs: `configs`, `cases`, `n_traj` (empty: the `N_TRAJ` budget), `N`, `njobs`.  There is no

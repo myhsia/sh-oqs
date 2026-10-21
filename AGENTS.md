@@ -59,7 +59,7 @@ python library/surface_hopping/validation.py
 gh workflow run data.yaml
 gh run watch <id> --exit-status
 gh run download <id> -n sh-data -D /tmp
-tar -xzf /tmp/sh-data/sh-data.tar.gz -C source/output/   # -> source/output/data/<config>/
+tar -xzf /tmp/sh-data/sh-data.tar.gz -C source/output/data/   # -> source/output/data/<config>/
 ```
 
 - The repository is public, so runner minutes are free; a full default run is 44 jobs
