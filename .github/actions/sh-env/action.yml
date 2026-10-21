@@ -1,0 +1,68 @@
+name: sh environment
+description: Restore the cached sh conda environment (and build/save it when build is true).
+
+inputs:
+  build:
+    description: Create and save the environment on a cache miss.
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Get date
+      id: date
+      shell: bash
+      run: echo "week=$(date -u +%G%V)" >> "$GITHUB_OUTPUT"
+
+    - name: Cache conda packages
+      uses: actions/cache@v6
+      with:
+        path: ~/conda_pkgs_dir
+        key: conda-pkgs-${{ runner.os }}-${{ hashFiles('source/environment.yaml') }}
+        restore-keys: |
+          conda-pkgs-${{ runner.os }}-
+
+    - name: Cache pip
+      uses: actions/cache@v6
+      with:
+        path: ~/.cache/pip
+        key: pip-${{ runner.os }}-${{ hashFiles('source/requirements.txt') }}
+        restore-keys: |
+          pip-${{ runner.os }}-
+
+    - name: Set up Miniconda
+      uses: conda-incubator/setup-miniconda@v4
+      with:
+        miniconda-version: latest
+        auto-update-conda: ${{ inputs.build }}
+        auto-activate: false
+        conda-remove-defaults: true
+        use-only-tar-bz2: true
+
+    - name: Cache sh environment
+      id: envcache
+      uses: actions/cache@v6
+      with:
+        path: ${{ env.CONDA }}/envs
+        # Refresh weekly so the (unpinned) pip dependencies stay close to latest.
+        key: conda-env-${{ runner.os }}-${{ steps.date.outputs.week }}-${{ hashFiles('source/environment.yaml', 'source/requirements.txt') }}
+
+    - name: Configure conda
+      if: inputs.build == 'true' && steps.envcache.outputs.cache-hit != 'true'
+      # The key exists only when the conda-anaconda-tos plugin is installed (as in
+      # recent Miniconda); without it, conda enforces no ToS, so a miss is harmless.
+      shell: bash -el {0}
+      run: conda config --set plugins.auto_accept_tos true || true
+
+    - name: Ensure the conda-pypi plugin
+      if: inputs.build == 'true' && steps.envcache.outputs.cache-hit != 'true'
+      # environment.yaml lists the `conda-pypi` channel, which the plugin provides.
+      # `-c defaults` is explicit because conda-remove-defaults drops it from condarc.
+      shell: bash -el {0}
+      run: conda install -n base -y -c defaults conda-pypi
+
+    - name: Create the sh environment
+      if: inputs.build == 'true' && steps.envcache.outputs.cache-hit != 'true'
+      shell: bash -el {0}
+      run: conda env create -f source/environment.yaml

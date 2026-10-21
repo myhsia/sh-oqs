@@ -1,0 +1,5 @@
+# Surface-hopping reference dynamics
+matplotlib
+numba
+numpy
+pyyaml

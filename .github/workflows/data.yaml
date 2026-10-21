@@ -1,0 +1,128 @@
+name: Data
+
+on:
+  workflow_dispatch:
+    inputs:
+      configs:
+        description: "Space-separated config prefixes (default: the whole RUNLIST, A to K)."
+        required: false
+        default: ""
+      cases:
+        description: "Space-separated cases (default: qhm qah chm cah)."
+        required: false
+        default: "qhm qah chm cah"
+      n_traj:
+        description: "Trajectories (empty: the sh.py default, 20000)."
+        required: false
+        default: ""
+      N:
+        description: "Bath modes per case (default: 200)."
+        required: false
+        default: "200"
+  push:
+    paths:
+      - "source/config/*.yaml"
+  pull_request:
+    paths:
+      - "source/config/*.yaml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: data-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      configs: ${{ steps.plan.outputs.configs }}
+      cases: ${{ steps.plan.outputs.cases }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Plan the run
+        id: plan
+        shell: bash
+        run: |
+          default="A-base_line B-slow_system C-no_bias D-strong_tunneling E-fast_bath F-slow_bath G-lowT H-highT I-weak_coupling J-strong_coupling K-linear_quad"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            list="${{ inputs.configs }}"
+            cases="${{ inputs.cases }}"
+          else
+            list=""
+            cases="qhm qah chm cah"
+          fi
+          list="${list:-$default}"
+          cases="${cases:-qhm qah chm cah}"
+          python3 - "$list" "$cases" >> "$GITHUB_OUTPUT" <<'PY'
+          import json, sys
+          print("configs=" + json.dumps(sys.argv[1].split()))
+          print("cases=" + json.dumps(sys.argv[2].split()))
+          PY
+
+  build_env:
+    name: Build environment (conda)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/sh-env
+        with:
+          build: "true"
+
+  sh:
+    name: sh (${{ matrix.config }} / ${{ matrix.case }})
+    needs: [plan, build_env]
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        config: ${{ fromJSON(needs.plan.outputs.configs) }}
+        case: ${{ fromJSON(needs.plan.outputs.cases) }}
+    defaults:
+      run:
+        shell: bash -el {0}
+    env:
+      MPLBACKEND: Agg
+    steps:
+      - uses: actions/checkout@v7
+      - name: Checkout shared pieces (public)
+        uses: actions/checkout@v7
+        with:
+          repository: myhsia/heomXdmrg-spin_boson
+          path: _public
+      - name: Copy shared pieces
+        run: |
+          mkdir -p source/config source/library
+          cp _public/source/config/*.yaml source/config/
+          cp _public/source/library/qutils.py _public/source/library/fsutils.py \
+             _public/source/library/pltools.py source/library/
+      - uses: ./.github/actions/sh-env
+      - name: Run surface hopping
+        working-directory: source
+        env:
+          SH_CFG: ${{ matrix.config }}
+          SH_CASE: ${{ matrix.case }}
+          SH_NTRAJ: ${{ inputs.n_traj }}
+          SH_N: ${{ inputs.N }}
+        run: |
+          conda activate sh
+          python - <<'PY'
+          import os, sh
+          kw = {}
+          if os.environ.get("SH_NTRAJ"): kw["n_traj"] = int(os.environ["SH_NTRAJ"])
+          if os.environ.get("SH_N"):     kw["N"] = int(os.environ["SH_N"])
+          sh.run(os.environ["SH_CFG"], cases=[os.environ["SH_CASE"]], **kw)
+          PY
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: sh-${{ matrix.config }}-${{ matrix.case }}
+          path: |
+            source/output/data/${{ matrix.config }}/*
+```

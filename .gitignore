@@ -1,0 +1,18 @@
+# Unnecessary files
+*.zip
+*.pdf
+*.log
+*Notes.bib
+
+# macOS DS
+.DS_Store
+
+# Python / run outputs
+/**/__pycache__/
+/**/output/
+
+# Shared non-sensitive pieces owned by the public heomXdmrg-spin_boson repo
+/source/config
+/source/library/qutils.py
+/source/library/fsutils.py
+/source/library/pltools.py
