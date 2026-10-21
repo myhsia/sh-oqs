@@ -18,6 +18,8 @@ LSBM corresponds to ``(0,0,0, epsilon,1,0)``.
 """
 
 import os, sys
+import multiprocessing
+from concurrent.futures import ProcessPoolExecutor
 import numpy as np
 from numba import njit
 
@@ -223,20 +225,90 @@ def _rescale_momentum(p, omega, chat, chat_norm_M, dE):
     return True
 
 
+def _spawn_seeds(rng, seed, n):
+    """``n`` independent integer seeds (drawn from ``rng`` when one is given)."""
+    if rng is not None:
+        seed = int(rng.integers(0, 2 ** 63 - 1))
+    return [int(s.generate_state(1, dtype=np.uint32)[0])
+            for s in np.random.SeedSequence(seed).spawn(n)]
+
+
+def _sizes(n_traj, n_slices):
+    """Split ``n_traj`` into (almost) equal slice sizes."""
+    n_slices = max(1, min(int(n_traj), int(n_slices)))
+    base, extra = divmod(int(n_traj), n_slices)
+    return [base + (1 if i < extra else 0) for i in range(n_slices)]
+
+
+def _slice_dm(args):
+    """One ensemble slice (module level, so the worker is picklable)."""
+    (epsilon, Delta, omega, c, beta, tlist, psi0, seed, m,
+     quantum, anharmon, model) = args
+    rng = np.random.default_rng(seed)
+    nT = len(tlist)
+    rho_sum = np.zeros((nT, 2, 2), dtype=complex)
+    n_frustrated = 0
+    q_all, p_all = sample_bath(omega, beta, quantum=quantum, n_traj=m, rng=rng)
+    for i in range(m):
+        rho, nf = fssh_trajectory(epsilon, Delta, omega, c, q_all[i], p_all[i],
+                                  psi0, tlist, anharmon=anharmon, rng=rng,
+                                  model=model)
+        rho_sum += rho
+        n_frustrated += nf
+    return rho_sum, n_frustrated
+
+
+def _slice_corr(args):
+    """One correlation slice; returns ``{pair index: unnormalised series}``."""
+    (epsilon, Delta, omega, c, beta, tlist, states, tasks, seed, m,
+     quantum, anharmon, model) = args
+    rng = np.random.default_rng(seed)
+    nT = len(tlist)
+    rho_s = [np.zeros((nT, 2, 2), dtype=complex) for _ in states]
+    q_all, p_all = sample_bath(omega, beta, quantum=quantum, n_traj=m, rng=rng)
+    for i in range(m):
+        for s, psi in enumerate(states):
+            rho, _ = fssh_trajectory(epsilon, Delta, omega, c, q_all[i], p_all[i],
+                                     psi, tlist, anharmon=anharmon, rng=rng,
+                                     model=model)
+            rho_s[s] += rho
+    acc = {}
+    for (s, wgt, ip, B) in tasks:
+        measured = np.einsum("tij,ji->t", rho_s[s], B)
+        acc[ip] = acc.get(ip, 0) + wgt * measured
+    return acc
+
+
 def run_trajectories(epsilon, Delta, omega, c, beta, tlist, psi0,
                      quantum=True, anharmon=0.0, n_traj=500, chunk=100,
-                     rng=None, seed=None, model=None):
+                     rng=None, seed=None, model=None, n_jobs=1):
     """Run an FSSH ensemble and return the averaged diabatic density matrix.
+
+    ``n_jobs > 1`` splits the ensemble into independent slices run in parallel
+    processes (deterministic per-slice seeds); ``n_jobs == 1`` uses the serial
+    loop.
 
     Returns
     -------
     rho_avg : (nT, 2, 2) complex ndarray
     n_frustrated : int
     """
-    if rng is None:
-        rng = np.random.default_rng(seed)
     if model is None:
         model = _default_model(epsilon)
+    if n_jobs > 1 and n_traj > 1:
+        sizes = _sizes(n_traj, 4 * n_jobs)
+        seeds = _spawn_seeds(rng, seed, len(sizes))
+        args = [(epsilon, Delta, omega, c, beta, tlist, psi0, seeds[i], m,
+                 quantum, anharmon, model)
+                for i, m in enumerate(sizes) if m > 0]
+        with ProcessPoolExecutor(max_workers = n_jobs,
+                mp_context = multiprocessing.get_context("fork")) as pool:
+            parts = list(pool.map(_slice_dm, args))
+        rho_sum = np.sum([p[0] for p in parts], axis = 0)
+        return rho_sum / n_traj, int(sum(p[1] for p in parts))
+
+    if rng is None:
+        rng = np.random.default_rng(seed)
     nT = len(tlist)
     rho_sum = np.zeros((nT, 2, 2), dtype=complex)
     n_frustrated = 0
@@ -257,7 +329,7 @@ def run_trajectories(epsilon, Delta, omega, c, beta, tlist, psi0,
 
 def run_correlations(epsilon, Delta, omega, c, beta, tlist, pairs,
                      quantum=True, anharmon=0.0, n_traj=4000, chunk=100,
-                     rng=None, seed=None, model=None):
+                     rng=None, seed=None, model=None, n_jobs=1):
     """FSSH correlation functions ``C_AB(t) = Tr[B U(t) A_op (x) rho_B]``.
 
     The time-zero operator ``A_op`` need not be Hermitian: it is split into
@@ -265,10 +337,11 @@ def run_correlations(epsilon, Delta, omega, c, beta, tlist, pairs,
     from its eigenstates with signed weights.  Bath samples are shared across
     the initial electronic states of each chunk.
 
+    ``n_jobs > 1`` runs independent slices in parallel processes; the workers
+    return unnormalised sums and the parent divides by ``n_traj``.
+
     Returns a list of (nT,) complex arrays, one per pair (unnormalised).
     """
-    if rng is None:
-        rng = np.random.default_rng(seed)
     if model is None:
         model = _default_model(epsilon)
     nT = len(tlist)
@@ -298,6 +371,23 @@ def run_correlations(epsilon, Delta, omega, c, beta, tlist, pairs,
                 tasks.append((state_map[key], w0 * lam[k], ip, pairs[ip][1]))
 
     acc = np.zeros((len(pairs), nT), dtype=complex)
+
+    if n_jobs > 1 and n_traj > 1:
+        sizes = _sizes(n_traj, 4 * n_jobs)
+        seeds = _spawn_seeds(rng, seed, len(sizes))
+        args = [(epsilon, Delta, omega, c, beta, tlist, states, tasks,
+                 seeds[i], m, quantum, anharmon, model)
+                for i, m in enumerate(sizes) if m > 0]
+        with ProcessPoolExecutor(max_workers = n_jobs,
+                mp_context = multiprocessing.get_context("fork")) as pool:
+            parts = list(pool.map(_slice_corr, args))
+        for part in parts:
+            for ip, series in part.items():
+                acc[ip] += series
+        return [acc[ip] / n_traj for ip in range(len(pairs))]
+
+    if rng is None:
+        rng = np.random.default_rng(seed)
     done = 0
     while done < n_traj:
         k = min(chunk, n_traj - done)
@@ -320,7 +410,7 @@ def run_correlations(epsilon, Delta, omega, c, beta, tlist, pairs,
 
 def run_observables(epsilon, Delta, omega, c, beta, tlist,
                     quantum=True, anharmon=0.0, n_traj=4000, chunk=100,
-                    rng=None, seed=None, model=None):
+                    rng=None, seed=None, model=None, n_jobs=1):
     """All MKCT observables via FSSH, mirroring ``mash.run_observables``.
 
     Returns a dict with ``pop`` (nT,2 real), ``cohe_p``, ``cohe_m``, ``Cmu``,
@@ -331,7 +421,8 @@ def run_observables(epsilon, Delta, omega, c, beta, tlist,
     keys = ["pop0", "pop1", "cohe_p", "cohe_m", "Cmu", "Cx"]
     Cs = run_correlations(epsilon, Delta, omega, c, beta, tlist, [pairs[k] for k in keys],
                           quantum=quantum, anharmon=anharmon, n_traj=n_traj,
-                          chunk=chunk, rng=rng, seed=seed, model=model)
+                          chunk=chunk, rng=rng, seed=seed, model=model,
+                          n_jobs=n_jobs)
     C = dict(zip(keys, Cs))
     Cmu = C["Cmu"]
     if Cmu[0] != 0:
