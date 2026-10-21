@@ -49,6 +49,10 @@ schema, `<method>` = `fssh`).
   return unnormalised sums and the parent process writes every archive, so no two processes write
   the same file.  With one case per process (`nproc >= #cases`) the inner pool is skipped, since
   nested pools only add overhead.
+- **Step size:** harmonic runs use `-dt` (default 0.005); the quartic stiffening raises the fastest
+  effective frequency, so an anharmonic run caps the step at `dt <= 0.15 / w_max` (e.g. 0.00125 for
+  the fast-bath scenario, where `w_max = 120`).  Without the cap a rare high-energy trajectory
+  diverges at the Verlet stability limit.
 - **Caveat:** classical nuclei, so this is a cross-check rather than an exact reference;
   it is reliable mainly for slow baths and high temperature.
 - The shared `config/`, `qutils.py`, `fsutils.py` and `pltools.py` are symlinked locally from

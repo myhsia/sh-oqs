@@ -91,11 +91,15 @@ def _compute(prefix: str, method: str = "mash", quantum: bool = True,
     a = float(params["anharmon"]) * np.sqrt(7.0 / 6.0) if anharm else 0.0
     xlims = parse_xlims(params["xlims"], reorder = True)
     tf    = xlims[0][1]
-    t     = np.linspace(0.0, tf, int(tf / dt) + 1)
     omega, c = ohmic_modes(lambd, wC, N = N, wmax_factor = wmax_factor)
+    # The quartic stiffening raises the fastest effective frequency, so an
+    # anharmonic run needs a shorter step than a harmonic one.
+    if a > 0.0:
+        dt = min(dt, 0.15 / float(np.max(omega)))
+    t     = np.linspace(0.0, tf, int(round(tf / dt)) + 1)
 
     tag = f"{method}_{_case_name(quantum, anharm)}"
-    print(f"[{prefix}] {tag}: N={N} n_traj={n_traj} tf={tf:g} "
+    print(f"[{prefix}] {tag}: N={N} n_traj={n_traj} tf={tf:g} dt={dt:g} "
           f"beta={beta} wC={wC} lambd={lambd} a={a:.4f} n_jobs={n_jobs}",
           flush = True)
 

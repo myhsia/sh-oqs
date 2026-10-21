@@ -74,6 +74,8 @@ def _fssh_traj_numba(Delta, omega, c, q, p, psi, t, aq,
         Vbar = pv0 + pv1 * Q + pv2 * Q * Q
         A = pa0 + pa1 * Q + pa2 * Q * Q
         R = np.sqrt(A * A + Delta * Delta)
+        if R < 1e-12:
+            R = 1e-12
         phi = np.arctan2(Delta, A)
         hp = 0.5 * phi
         ch = np.cos(hp); sh = np.sin(hp)
@@ -145,6 +147,8 @@ def _fssh_traj_numba(Delta, omega, c, q, p, psi, t, aq,
             dVdQ = pv1 + 2.0 * pv2 * Q
             A = pa0 + pa1 * Q + pa2 * Q * Q
             R = np.sqrt(A * A + Delta * Delta)
+            if R < 1e-12:
+                R = 1e-12
             dAdQ = pa1 + 2.0 * pa2 * Q
             for j in range(n):
                 F = (-omega[j] * (q[j] + aq * q[j] ** 3)

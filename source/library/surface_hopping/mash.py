@@ -57,6 +57,8 @@ def _mash_traj_numba(Delta, omega, c, q, p, S0, t, aq,
             Q += c[j] * q[j]
         A = pa0 + pa1 * Q + pa2 * Q * Q
         R = np.sqrt(A * A + Delta * Delta)
+        if R < 1e-12:
+            R = 1e-12
         sinphi = Delta / R
         Vz = R
         dAdQ = pa1 + 2.0 * pa2 * Q
@@ -172,6 +174,8 @@ def _adiabatic(Delta, c, q, model):
     Vbar = pv0 + pv1 * Q + pv2 * Q * Q
     A = pa0 + pa1 * Q + pa2 * Q * Q
     R = np.hypot(A, Delta)
+    if R < 1e-12:
+        R = 1e-12
     return Q, Vbar, A, R, A / R, Delta / R
 
 

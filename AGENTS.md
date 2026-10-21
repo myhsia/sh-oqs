@@ -35,6 +35,10 @@ that repository out anonymously and copies them (no token).
 - Parallelism: `-nproc` runs the cases as separate processes (default 4), `-njobs` splits each
   case's ensemble over inner workers (default -1: share the cores).  The parent process writes
   every archive, so no two workers touch the same file.
+- **Step size.** Harmonic runs use `-dt` (default 0.005).  The quartic term stiffens the fastest
+  mode, so an anharmonic run caps the step at `dt <= 0.15 / w_max`; otherwise a rare
+  high-energy trajectory near the Verlet stability limit can diverge (`w_max_factor = 10`
+  gives `w_max = 120` and `dt = 0.00125` for the fast-bath scenario).
 - Classical nuclei: a cross-check, reliable mainly for slow baths and high temperature.
 - Coding style: see the maintainer's shared `repo-rules` skill.
 
