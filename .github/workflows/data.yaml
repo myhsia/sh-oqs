@@ -125,4 +125,3 @@ jobs:
           name: sh-${{ matrix.config }}-${{ matrix.case }}
           path: |
             source/output/data/${{ matrix.config }}/*
-```
