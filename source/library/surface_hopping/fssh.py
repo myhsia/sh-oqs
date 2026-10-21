@@ -15,6 +15,14 @@ General adiabatic model (as for MASH)::
     |-> = (-sin(phi/2), cos(phi/2)),  E_- = Vbar - Vz   (active = 1)
 
 LSBM corresponds to ``(0,0,0, epsilon,1,0)``.
+
+Two optional refinements are implemented and were evaluated against the exact
+single-mode reference and HEOM: a Granucci/Persico decoherence damping
+(``deco``, JCP 126, 134114 (2007) Eq. 17) and a per-mode quantum Langevin
+thermostat (``gamma``, white noise with the quantum FDT, noise strength
+``gamma*coth(beta*w_j/2)``).  Neither improves the spin-boson dynamics -- the
+long-time deviation from HEOM is nuclear quantum statistics (it vanishes as
+beta -> 0), not coherence -- so the drivers leave both at 0.
 """
 
 import os, sys
@@ -29,7 +37,7 @@ from qutils import sample_bath
 
 @njit(cache=True, fastmath=True)
 def _fssh_traj_numba(Delta, omega, c, q, p, psi, t, aq,
-                     pv0, pv1, pv2, pa0, pa1, pa2, seed):
+                     pv0, pv1, pv2, pa0, pa1, pa2, seed, deco, beta, gamma):
     nT = t.shape[0]
     dt = t[1] - t[0]
     n = omega.shape[0]
@@ -91,6 +99,30 @@ def _fssh_traj_numba(Delta, omega, c, q, p, psi, t, aq,
 
         chi0 = ch * psi0 + sh * psi1
         chi1 = -sh * psi0 + ch * psi1
+
+        # Decoherence correction (Granucci & Persico, JCP 126, 134114 (2007),
+        # Eq. 17): damp the inactive adiabatic coefficient over
+        # tau = (1 + deco/Ekin)/|E_+ - E_-| and restore the active population.
+        if deco > 0.0:
+            Ekin = 0.0
+            for j in range(n):
+                Ekin += 0.5 * omega[j] * p[j] * p[j]
+            tau = (1.0 + deco / (Ekin + 1e-12)) / (2.0 * R + 1e-12)
+            damp = np.exp(-dt / tau)
+            if active == 0:
+                chi1 = chi1 * damp
+                a0 = chi0.real * chi0.real + chi0.imag * chi0.imag
+                a1 = chi1.real * chi1.real + chi1.imag * chi1.imag
+                if a0 > 1e-14 and a1 < 1.0:
+                    chi0 = chi0 * np.sqrt((1.0 - a1) / a0)
+            else:
+                chi0 = chi0 * damp
+                a0 = chi0.real * chi0.real + chi0.imag * chi0.imag
+                a1 = chi1.real * chi1.real + chi1.imag * chi1.imag
+                if a1 > 1e-14 and a0 < 1.0:
+                    chi1 = chi1 * np.sqrt((1.0 - a0) / a1)
+            psi0 = ch * chi0 - sh * chi1
+            psi1 = sh * chi0 + ch * chi1
 
         # fewest-switches hopping
         dAdQ = pa1 + 2.0 * pa2 * Q
@@ -154,6 +186,15 @@ def _fssh_traj_numba(Delta, omega, c, q, p, psi, t, aq,
                 F = (-omega[j] * (q[j] + aq * q[j] ** 3)
                      - c[j] * (dVdQ + (A / R) * dAdQ * sgn))
                 p[j] += 0.5 * dt * F
+                # Quantum Langevin thermostat (white noise with the per-mode
+                # quantum FDT): C_pp = C_qq = coth(beta w_j/2)/2, so the noise
+                # strength is gamma*coth(beta w_j/2) and the classical limit
+                # (2 gamma / beta) is recovered at high temperature.
+                if gamma > 0.0:
+                    p[j] -= 0.5 * dt * gamma * p[j]
+                    if half == 1:
+                        th = gamma / np.tanh(0.5 * beta * omega[j])
+                        p[j] += np.sqrt(th * dt) * np.random.normal()
             if half == 0:
                 for j in range(n):
                     q[j] += dt * (omega[j] * p[j])
@@ -182,7 +223,8 @@ def _initial_active(psi, phi, rng):
 
 
 def fssh_trajectory(epsilon, Delta, omega, c, q, p, psi, tlist,
-                    anharmon=0.0, rng=None, model=None, seed=None):
+                    anharmon=0.0, rng=None, model=None, seed=None, deco=0.0,
+                    beta=0.0, gamma=0.0):
     """Propagate one FSSH trajectory (numba-accelerated).
 
     ``model`` is an optional ``(pv0,pv1,pv2,pa0,pa1,pa2)`` coefficient tuple
@@ -203,7 +245,8 @@ def fssh_trajectory(epsilon, Delta, omega, c, q, p, psi, tlist,
         np.ascontiguousarray(p, dtype=float),
         np.ascontiguousarray(psi, dtype=complex),
         np.ascontiguousarray(tlist, dtype=float),
-        float(anharmon) ** 2, pv0, pv1, pv2, pa0, pa1, pa2, int(seed))
+        float(anharmon) ** 2, pv0, pv1, pv2, pa0, pa1, pa2, int(seed),
+        float(deco), float(beta), float(gamma))
     return rho, 0
 
 
@@ -247,7 +290,7 @@ def _sizes(n_traj, n_slices):
 def _slice_dm(args):
     """One ensemble slice (module level, so the worker is picklable)."""
     (epsilon, Delta, omega, c, beta, tlist, psi0, seed, m,
-     quantum, anharmon, model) = args
+     quantum, anharmon, model, deco, gamma) = args
     rng = np.random.default_rng(seed)
     nT = len(tlist)
     rho_sum = np.zeros((nT, 2, 2), dtype=complex)
@@ -256,7 +299,8 @@ def _slice_dm(args):
     for i in range(m):
         rho, nf = fssh_trajectory(epsilon, Delta, omega, c, q_all[i], p_all[i],
                                   psi0, tlist, anharmon=anharmon, rng=rng,
-                                  model=model)
+                                  model=model, deco=deco, beta=beta,
+                                  gamma=gamma)
         rho_sum += rho
         n_frustrated += nf
     return rho_sum, n_frustrated
@@ -265,7 +309,7 @@ def _slice_dm(args):
 def _slice_corr(args):
     """One correlation slice; returns ``{pair index: unnormalised series}``."""
     (epsilon, Delta, omega, c, beta, tlist, states, tasks, seed, m,
-     quantum, anharmon, model) = args
+     quantum, anharmon, model, deco, gamma) = args
     rng = np.random.default_rng(seed)
     nT = len(tlist)
     rho_s = [np.zeros((nT, 2, 2), dtype=complex) for _ in states]
@@ -274,7 +318,8 @@ def _slice_corr(args):
         for s, psi in enumerate(states):
             rho, _ = fssh_trajectory(epsilon, Delta, omega, c, q_all[i], p_all[i],
                                      psi, tlist, anharmon=anharmon, rng=rng,
-                                     model=model)
+                                     model=model, deco=deco, beta=beta,
+                                     gamma=gamma)
             rho_s[s] += rho
     acc = {}
     for (s, wgt, ip, B) in tasks:
@@ -285,7 +330,8 @@ def _slice_corr(args):
 
 def run_trajectories(epsilon, Delta, omega, c, beta, tlist, psi0,
                      quantum=True, anharmon=0.0, n_traj=500, chunk=100,
-                     rng=None, seed=None, model=None, n_jobs=1):
+                     rng=None, seed=None, model=None, n_jobs=1, deco=0.0,
+                     gamma=0.0):
     """Run an FSSH ensemble and return the averaged diabatic density matrix.
 
     ``n_jobs > 1`` splits the ensemble into independent slices run in parallel
@@ -303,7 +349,7 @@ def run_trajectories(epsilon, Delta, omega, c, beta, tlist, psi0,
         sizes = _sizes(n_traj, 4 * n_jobs)
         seeds = _spawn_seeds(rng, seed, len(sizes))
         args = [(epsilon, Delta, omega, c, beta, tlist, psi0, seeds[i], m,
-                 quantum, anharmon, model)
+                 quantum, anharmon, model, deco, gamma)
                 for i, m in enumerate(sizes) if m > 0]
         with ProcessPoolExecutor(max_workers = n_jobs,
                 mp_context = multiprocessing.get_context("fork")) as pool:
@@ -324,7 +370,8 @@ def run_trajectories(epsilon, Delta, omega, c, beta, tlist, psi0,
         for i in range(m):
             rho, nf = fssh_trajectory(epsilon, Delta, omega, c, q_all[i], p_all[i],
                                       psi0, tlist, anharmon=anharmon,
-                                      rng=rng, model=model)
+                                      rng=rng, model=model, deco=deco,
+                                      beta=beta, gamma=gamma)
             rho_sum += rho
             n_frustrated += nf
         done += m
@@ -333,7 +380,8 @@ def run_trajectories(epsilon, Delta, omega, c, beta, tlist, psi0,
 
 def run_correlations(epsilon, Delta, omega, c, beta, tlist, pairs,
                      quantum=True, anharmon=0.0, n_traj=4000, chunk=100,
-                     rng=None, seed=None, model=None, n_jobs=1):
+                     rng=None, seed=None, model=None, n_jobs=1, deco=0.0,
+                     gamma=0.0):
     """FSSH correlation functions ``C_AB(t) = Tr[B U(t) A_op (x) rho_B]``.
 
     The time-zero operator ``A_op`` need not be Hermitian: it is split into
@@ -380,7 +428,7 @@ def run_correlations(epsilon, Delta, omega, c, beta, tlist, pairs,
         sizes = _sizes(n_traj, 4 * n_jobs)
         seeds = _spawn_seeds(rng, seed, len(sizes))
         args = [(epsilon, Delta, omega, c, beta, tlist, states, tasks,
-                 seeds[i], m, quantum, anharmon, model)
+                 seeds[i], m, quantum, anharmon, model, deco, gamma)
                 for i, m in enumerate(sizes) if m > 0]
         with ProcessPoolExecutor(max_workers = n_jobs,
                 mp_context = multiprocessing.get_context("fork")) as pool:
@@ -402,7 +450,8 @@ def run_correlations(epsilon, Delta, omega, c, beta, tlist, pairs,
             for s, psi in enumerate(states):
                 rho, _ = fssh_trajectory(epsilon, Delta, omega, c, q_all[i], p_all[i],
                                          psi, tlist, anharmon=anharmon,
-                                         rng=rng, model=model)
+                                         rng=rng, model=model, deco=deco,
+                                         beta=beta, gamma=gamma)
                 rho_s[s] += rho
         for (s, wgt, ip, B) in tasks:
             rho_avg = rho_s[s] / n_traj
@@ -414,7 +463,8 @@ def run_correlations(epsilon, Delta, omega, c, beta, tlist, pairs,
 
 def run_observables(epsilon, Delta, omega, c, beta, tlist,
                     quantum=True, anharmon=0.0, n_traj=4000, chunk=100,
-                    rng=None, seed=None, model=None, n_jobs=1):
+                    rng=None, seed=None, model=None, n_jobs=1, deco=0.0,
+                    gamma=0.0):
     """All MKCT observables via FSSH, mirroring ``mash.run_observables``.
 
     Returns a dict with ``pop`` (nT,2 real), ``cohe_p``, ``cohe_m``, ``Cmu``,
@@ -426,7 +476,7 @@ def run_observables(epsilon, Delta, omega, c, beta, tlist,
     Cs = run_correlations(epsilon, Delta, omega, c, beta, tlist, [pairs[k] for k in keys],
                           quantum=quantum, anharmon=anharmon, n_traj=n_traj,
                           chunk=chunk, rng=rng, seed=seed, model=model,
-                          n_jobs=n_jobs)
+                          n_jobs=n_jobs, deco=deco, gamma=gamma)
     C = dict(zip(keys, Cs))
     Cmu = C["Cmu"]
     if Cmu[0] != 0:
