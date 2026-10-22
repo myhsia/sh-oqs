@@ -31,6 +31,14 @@ on:
         description: "Time step (empty: the sh.py default, 0.005)."
         required: false
         default: ""
+      wmax:
+        description: "Quadrature cutoff in units of wC (default: 10)."
+        required: false
+        default: ""
+      label:
+        description: "Tag suffix, so a sweep does not overwrite the baseline."
+        required: false
+        default: ""
       sampling:
         description: "auto | quantum | classical (override the per-case choice)."
         required: false
@@ -40,7 +48,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: data-${{ github.workflow }}-${{ github.ref }}
+  # Unique per dispatch so independent sweep runs are not serialised.
+  group: data-${{ github.workflow }}-${{ github.ref }}-${{ github.run_id }}
   cancel-in-progress: false
 
 jobs:
@@ -125,6 +134,8 @@ jobs:
           SH_NJOBS: ${{ inputs.njobs }}
           SH_DT: ${{ inputs.dt }}
           SH_SAMPLING: ${{ inputs.sampling }}
+          SH_WMAX: ${{ inputs.wmax }}
+          SH_LABEL: ${{ inputs.label }}
         run: |
           conda activate sh
           python - <<'PY'
@@ -135,6 +146,8 @@ jobs:
           if os.environ.get("SH_NJOBS"): kw["njobs"]  = int(os.environ["SH_NJOBS"])
           if os.environ.get("SH_DT"):    kw["dt"]     = float(os.environ["SH_DT"])
           if os.environ.get("SH_SAMPLING"): kw["sampling"] = os.environ["SH_SAMPLING"]
+          if os.environ.get("SH_WMAX"):   kw["wmax_factor"] = float(os.environ["SH_WMAX"])
+          if os.environ.get("SH_LABEL"):  kw["label"] = os.environ["SH_LABEL"]
           sh.run(os.environ["SH_CFG"], methods=[os.environ["SH_METHOD"]],
                  cases=[os.environ["SH_CASE"]], **kw)
           PY

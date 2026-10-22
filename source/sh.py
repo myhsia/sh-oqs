@@ -59,6 +59,8 @@ def _parse_args():
     parser.add_argument("-sampling", choices = ["auto", "quantum", "classical"],
                         default = "auto",
                         help = "Bath sampling (default: by case)")
+    parser.add_argument("-label", type = str, default = "",
+                        help = "Suffix appended to the output tag (sweeps)")
     parser.add_argument("-nproc", type = int, default = 4,
                         help = "Number of cases to run in parallel (default: %(default)s)")
     parser.add_argument("-njobs", type = int, default = -1,
@@ -69,7 +71,7 @@ def _parse_args():
 def _compute(prefix: str, method: str = "mash", quantum: bool = True,
              anharm: bool = False, n_traj: int = 40000, N: int = 200,
              wmax_factor: float = 10.0, dt: float = 0.005, seed: int = 0,
-             n_jobs: int = 1):
+             n_jobs: int = 1, label: str = ""):
     """Compute one ``(prefix, method, case)``; return ``(t, tag, result)``."""
     # 3. Parameters (physical values; ``scale`` is a numerical device only)
     params    = load_config(prefix)
@@ -103,6 +105,8 @@ def _compute(prefix: str, method: str = "mash", quantum: bool = True,
     t     = np.linspace(0.0, tf, int(round(tf / dt)) + 1)
 
     tag = f"{method}_{_case_name(quantum, anharm)}"
+    if label:
+        tag += "_" + label
     print(f"[{prefix}] {tag}: N={N} n_traj={n_traj} tf={tf:g} dt={dt:g} "
           f"beta={beta} wC={wC} lambd={lambd} a={a:.4f} n_jobs={n_jobs}",
           flush = True)
@@ -174,7 +178,7 @@ RUNLIST = [
 def run(prefix: str, methods = METHODS, cases = CASES, n_traj = None,
         N: int = 200, wmax_factor: float = 10.0, dt: float = 0.005,
         seed: int = 0, nproc: int = 4, njobs: int = -1,
-        sampling: str = "auto"):
+        sampling: str = "auto", label: str = ""):
     """Run one or more methods across the selected cases for a single config.
 
     ``n_traj`` defaults to the per-method ``N_TRAJ`` budget.  The cases run as
@@ -199,7 +203,7 @@ def run(prefix: str, methods = METHODS, cases = CASES, n_traj = None,
             if sampling != "auto":
                 quantum = sampling == "quantum"
             specs.append((prefix, method, quantum, anharm, nt, N, wmax_factor,
-                          dt, seed, n_inner))
+                          dt, seed, n_inner, label))
         if workers == 1 or len(specs) == 1:
             for spec in specs:
                 t, tag, res = _compute(*spec)
@@ -218,6 +222,6 @@ if __name__ == "__main__":
         run(prefix, methods = methods, cases = CASES, n_traj = args.n_traj,
             N = args.N, wmax_factor = args.wmax_factor, dt = args.dt,
             seed = args.seed, nproc = args.nproc, njobs = args.njobs,
-            sampling = args.sampling)
+            sampling = args.sampling, label = args.label)
 
 # %%
