@@ -20,7 +20,7 @@ METHODS = ["fssh", "mash"]
 CASES   = ["qhm", "qah", "chm", "cah"]
 
 # Per-method trajectory budgets (used when ``-n_traj`` is not given).
-N_TRAJ = {"mash": 40000, "fssh": 20000}
+N_TRAJ = {"mash": 40000, "fssh": 20000, "lsc": 40000, "ehrenfest": 20000}
 
 # Mirror of the MKCT ``cases`` matrix: case -> (quantum sampling, anharmonic).
 _CASE_MATRIX = {
@@ -43,7 +43,8 @@ def _parse_args():
         description = "Surface-hopping reference dynamics for the spin-boson model.")
     parser.add_argument("prefix", nargs = "?", default = None,
                         help = "Config prefix (default: run RUNLIST)")
-    parser.add_argument("-method", choices = ["mash", "fssh", "all"],
+    parser.add_argument("-method",
+                        choices = ["mash", "fssh", "lsc", "ehrenfest", "all"],
                         default = "all", help = "Trajectory method")
     parser.add_argument("-n_traj", type = int, default = None,
                         help = "Number of trajectories (default: per-method budget)")
@@ -107,15 +108,20 @@ def _compute(prefix: str, method: str = "mash", quantum: bool = True,
           flush = True)
 
     # 4. Dynamics
-    if method == "mash":
+    if method in ("mash", "lsc"):
+        # "lsc" is the same mapping dynamics with the mean-field (continuous Sz)
+        # force instead of deterministic hops.
         res = mash.run_observables(epsilon, Delta, omega, c, beta, t, quantum = quantum,
                                    anharmon = a, n_traj = n_traj, seed = seed,
-                                   model = model)
+                                   model = model, n_jobs = n_jobs,
+                                   meanfield = (method == "lsc"))
     else:
+        # "ehrenfest" is FSSH with the mean-field force and no hops.
         res = fssh.run_observables(epsilon, Delta, omega, c, beta, t,
                                    quantum = quantum, anharmon = a,
                                    n_traj = n_traj, seed = seed,
-                                   model = model, n_jobs = n_jobs)
+                                   model = model, n_jobs = n_jobs,
+                                   meanfield = (method == "ehrenfest"))
     return t, tag, res
 
 

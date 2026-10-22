@@ -30,7 +30,7 @@ from surface_hopping.fssh import _rescale_momentum, _sizes, _spawn_seeds
 
 @njit(cache=True, fastmath=True)
 def _mash_traj_numba(Delta, omega, c, q, p, S0, t, aq,
-                     pv0, pv1, pv2, pa0, pa1, pa2):
+                     pv0, pv1, pv2, pa0, pa1, pa2, meanfield):
     """Adiabatic model: ``Vbar(Q) = pv0 + pv1 Q + pv2 Q^2`` and
     ``A(Q) = pa0 + pa1 Q + pa2 Q^2`` with ``Q = sum_j c_j q_j``; the adiabatic
     half-gap is ``Vz = sqrt(A^2 + Delta^2)`` and ``phi = atan2(Delta, A)``.
@@ -93,7 +93,7 @@ def _mash_traj_numba(Delta, omega, c, q, p, S0, t, aq,
         nSx /= nn; nSy /= nn; nSz /= nn
 
         # deterministic hop at the equator (Eq. 25 rescaling)
-        if Sz0 * nSz < 0.0:
+        if (not meanfield) and Sz0 * nSz < 0.0:
             pt = 0.0
             for j in range(n):
                 pt += c[j] * p[j]
@@ -137,7 +137,8 @@ def _mash_traj_numba(Delta, omega, c, q, p, S0, t, aq,
         # nuclear velocity-Verlet on the sgn(Sz) surface:
         # F_j = -dVbar/dq_j - dVz/dq_j sgn(Sz) - w_j q_j - aq w_j q_j^3,
         # with dVz/dq_j = (A/Vz) dA/dQ c_j.
-        sgnz = 1.0 if Sz0 > 0.0 else -1.0
+        # spin-LSC (mean field) uses the continuous Sz; MASH uses sgn(Sz)
+        sgnz = Sz0 if meanfield else (1.0 if Sz0 > 0.0 else -1.0)
         for half in range(2):
             Q = 0.0
             for j in range(n):
@@ -315,7 +316,8 @@ def run_mash(epsilon, Delta, omega, c, beta, tlist, init_hemisphere=None,
     return P_plus, P_minus
 
 
-def mash_trajectory(epsilon, Delta, omega, c, q, p, S, tlist, anharmon=0.0, model=None):
+def mash_trajectory(epsilon, Delta, omega, c, q, p, S, tlist, anharmon=0.0,
+                    model=None, meanfield=False):
     """Numba-accelerated MASH trajectory (see ``_mash_trajectory_py``).
 
     ``model`` is an optional ``(pv0,pv1,pv2,pa0,pa1,pa2)`` coefficient tuple
@@ -331,7 +333,7 @@ def mash_trajectory(epsilon, Delta, omega, c, q, p, S, tlist, anharmon=0.0, mode
                             np.ascontiguousarray(c, dtype=float), q, p, S,
                             np.ascontiguousarray(tlist, dtype=float),
                             float(anharmon) ** 2,
-                            pv0, pv1, pv2, pa0, pa1, pa2)
+                            pv0, pv1, pv2, pa0, pa1, pa2, bool(meanfield))
 
 
 def run_density_matrix(epsilon, Delta, omega, c, beta, tlist, rho_S_dia,
@@ -358,7 +360,8 @@ def run_density_matrix(epsilon, Delta, omega, c, beta, tlist, rho_S_dia,
         q, p = sample_bath(omega, beta, quantum=quantum, n_traj=k, rng=rng)
         for i in range(k):
             Pp, Pm, Sx, Sy, Sz, Q = mash_trajectory(epsilon, Delta, omega, c, q[i], p[i], S[i], tlist,
-                                                    anharmon=anharmon, model=model)
+                                                    anharmon=anharmon, model=model,
+                                                    meanfield=meanfield)
             phi0 = _phi_of_Q(Delta, Q[0], model); cp0, sp0 = np.cos(phi0/2), np.sin(phi0/2)
             U0 = np.array([[cp0, -sp0], [sp0, cp0]])
             r0 = U0.conj().T @ rho_S_dia @ U0
@@ -414,7 +417,7 @@ def _unique_ops(ops):
 
 
 def _accumulate_mash(epsilon, Delta, omega, c, beta, tlist, pairs, model,
-                     quantum, anharmon, rng, n_traj):
+                     quantum, anharmon, rng, n_traj, meanfield=False):
     """Unnormalised MASH estimator sum over ``n_traj`` trajectories."""
     A_list, A_idx = _unique_ops([p[0] for p in pairs])
     B_list, B_idx = _unique_ops([p[1] for p in pairs])
@@ -433,7 +436,8 @@ def _accumulate_mash(epsilon, Delta, omega, c, beta, tlist, pairs, model,
         q, p = sample_bath(omega, beta, quantum=quantum, n_traj=k, rng=rng)
         for i in range(k):
             Pp, Pm, Sx, Sy, Sz, Q = mash_trajectory(epsilon, Delta, omega, c, q[i], p[i], S[i], tlist,
-                                                    anharmon=anharmon, model=model)
+                                                    anharmon=anharmon, model=model,
+                                                    meanfield=meanfield)
             phi = _phi_of_Q(Delta, Q, model)
             ch, sh = np.cos(phi/2), np.sin(phi/2)
             phi0 = phi[0]; c0, s0 = np.cos(phi0/2), np.sin(phi0/2)
@@ -458,14 +462,15 @@ def _accumulate_mash(epsilon, Delta, omega, c, beta, tlist, pairs, model,
 def _slice_mash(args):
     """One ensemble slice (module level, so the pool worker is picklable)."""
     (epsilon, Delta, omega, c, beta, tlist, pairs, model,
-     quantum, anharmon, seed, m) = args
+     quantum, anharmon, seed, m, meanfield) = args
     return _accumulate_mash(epsilon, Delta, omega, c, beta, tlist, pairs, model,
-                            quantum, anharmon, np.random.default_rng(seed), m)
+                            quantum, anharmon, np.random.default_rng(seed), m,
+                            meanfield)
 
 
 def run_correlations(epsilon, Delta, omega, c, beta, tlist, pairs,
                      quantum=True, anharmon=0.0, n_traj=4000, rng=None, seed=None,
-                     model=None, n_jobs=1):
+                     model=None, n_jobs=1, meanfield=False):
     """MASH correlations ``C_AB(t) = Tr[B U(t) A_op (x) rho_B]`` for many
     operator pairs in a *single* trajectory ensemble.
 
@@ -490,7 +495,7 @@ def run_correlations(epsilon, Delta, omega, c, beta, tlist, pairs,
         sizes = _sizes(n_traj, 4 * n_jobs)
         seeds = _spawn_seeds(rng, seed, len(sizes))
         args = [(epsilon, Delta, omega, c, beta, tlist, pairs, model,
-                 quantum, anharmon, seeds[i], m)
+                 quantum, anharmon, seeds[i], m, meanfield)
                 for i, m in enumerate(sizes) if m > 0]
         with ProcessPoolExecutor(max_workers = n_jobs,
                 mp_context = multiprocessing.get_context("fork")) as pool:
@@ -501,7 +506,7 @@ def run_correlations(epsilon, Delta, omega, c, beta, tlist, pairs,
     if rng is None:
         rng = np.random.default_rng(seed)
     acc = _accumulate_mash(epsilon, Delta, omega, c, beta, tlist, pairs, model,
-                           quantum, anharmon, rng, n_traj)
+                           quantum, anharmon, rng, n_traj, meanfield)
     return [2.0 * acc[ip] / n_traj for ip in range(nPairs)]
 
 
@@ -542,7 +547,7 @@ def _standard_pairs():
 
 def run_observables(epsilon, Delta, omega, c, beta, tlist,
                     quantum=True, anharmon=0.0, n_traj=4000, rng=None, seed=None,
-                    model=None, n_jobs=1):
+                    model=None, n_jobs=1, meanfield=False):
     """All MKCT observables in one MASH ensemble.
 
     ``model`` selects the adiabatic model (default LSBM); see
@@ -553,7 +558,7 @@ def run_observables(epsilon, Delta, omega, c, beta, tlist,
     Cs = run_correlations(epsilon, Delta, omega, c, beta, tlist, [pairs[k] for k in keys],
                           quantum=quantum, anharmon=anharmon,
                           n_traj=n_traj, rng=rng, seed=seed, model=model,
-                          n_jobs=n_jobs)
+                          n_jobs=n_jobs, meanfield=meanfield)
     C = dict(zip(keys, Cs))
     Cmu = C["Cmu"]
     if Cmu[0] != 0:
