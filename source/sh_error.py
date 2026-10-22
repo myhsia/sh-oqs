@@ -76,11 +76,8 @@ def _heom(prefix, quantity, tf):
     return t[win], y[win]
 
 
-FLOOR = 5e-2        # ignore reference curves below this fraction of the largest
-
-
 def error(prefix, method, case, label=""):
-    """``(mean relative error %, n_curves)``; None if the run is absent."""
+    """Mean relative error (percent) over the six curves; None if absent."""
     d = "./output/data/" + prefix + "/"
     tag = f"{method}_{case}" + (f"_{label}" if label else "")
     stem = "pop_heom.npz" if method == "mkct" else f"pop_{tag}.npz"
@@ -102,20 +99,14 @@ def error(prefix, method, case, label=""):
 
     cmu = core._interp(chc, thc, t)
     cx = core._interp(chx, thx, t)
-    pairs = [(pop[:, 0].real, np.interp(t, thp, php[:, 0].real)),
-             (pop[:, 1].real, np.interp(t, thp, php[:, 1].real)),
-             (c.real, cmu.real), (x.real, cx.real),
-             (c.imag, cmu.imag), (x.imag, cx.imag)]
-    # Curves that vanish by symmetry in the reference (e.g. Im C_xx for a
-    # unbiased system) carry no information and would blow the relative error
-    # up arbitrarily; drop those below FLOOR times the largest reference norm
-    # and average over the rest.
-    norms = [np.linalg.norm(b) for _, b in pairs]
-    keep = [np.linalg.norm(b) >= FLOOR * max(norms) for _, b in pairs]
-    if not any(keep):
-        return None
-    e = sum(core._rel(a, b) for (a, b), k in zip(pairs, keep) if k)
-    return 100.0 * e / sum(keep), sum(keep)
+    # The six curves of the canonical metric, exactly as mre.scan_config.
+    e = (core._rel(pop[:, 0].real, np.interp(t, thp, php[:, 0].real))
+         + core._rel(pop[:, 1].real, np.interp(t, thp, php[:, 1].real))
+         + core._rel(c.real, cmu.real)
+         + core._rel(x.real, cx.real)
+         + core._rel(c.imag, cmu.imag)
+         + core._rel(x.imag, cx.imag))
+    return 100.0 * e / core.N_OBS
 
 
 def main():
@@ -136,8 +127,7 @@ def main():
                 got = [g for g in got if g is not None]
                 if not got:
                     continue
-                rows[key] = {"E": float(np.mean([g[0] for g in got])),
-                             "n_obs": int(min(g[1] for g in got)), "tf": float(
+                rows[key] = {"E": float(np.mean(got)), "tf": float(
                     parse_xlims(load_config(prefix)["xlims"],
                                 reorder = True)[0][1])}
     if os.path.exists(JSON):
