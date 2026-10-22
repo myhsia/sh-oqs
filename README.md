@@ -50,7 +50,7 @@ python library/surface_hopping/validation.py
 
 ## Shared pieces
 
-`source/heom.py`, `source/config/` and `source/library/{qutils,fsutils,pltools}.py` are copies of
+`source/heom.py`, `source/config/` and `source/library/{qutils,fsutils,pltools,extended_heom}.py` are copies of
 the canonical files in the private `mkct-oqs` repository.  After a change there, run
 `bash tools/sync_from_mkct.sh` and commit (the public
 [heomXdmrg-spin_boson](https://github.com/myhsia/heomXdmrg-spin_boson) mirror does the same).
