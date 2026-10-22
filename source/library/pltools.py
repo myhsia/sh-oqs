@@ -52,6 +52,73 @@ class GridPlt:
     # Shared style for the small rounded tags (Re/Im and table frames).
     TAG_BBOX = dict(boxstyle = "round, pad = .20",
                     facecolor = "gray", alpha = .25)
+    # Colour-bar span of the error matrix, in decades of the mean error (%).
+    ERROR_DECADES = 3.0
+
+    @staticmethod
+    def _error_matrix(rows, n_obs: int):
+        """Dense ``[n, m]`` mean-error array (%) and its ``m``/``n`` maxima.
+
+        ``rows`` are the scan records (``m``, ``n``, ``E``); the mean error is
+        ``E / n_obs`` in percent.
+        """
+        mmax = max(r["m"] for r in rows)
+        nmax = max(r["n"] for r in rows)
+        Er = np.full((nmax + 1, mmax + 1), np.nan)
+        for r in rows:
+            if np.isfinite(r["E"]):
+                Er[r["n"], r["m"]] = r["E"] / n_obs * 100.0
+        return Er, mmax, nmax
+
+    @staticmethod
+    def log_range(rows, n_obs: int) -> tuple[float, float]:
+        """Colour limits ``(vmin, vmax)`` for the ``log10`` mean error (%).
+
+        The window starts at the smallest finite error and spans
+        ``ERROR_DECADES`` decades; larger (divergent) errors saturate at the
+        top of the scale.
+        """
+        vals = [np.log10(r["E"] / n_obs * 100.0) for r in rows
+                if np.isfinite(r["E"]) and r["E"] > 0]
+        vmin = float(min(vals))
+        return vmin, vmin + GridPlt.ERROR_DECADES
+
+    @staticmethod
+    def matrix_panel(ax, rows, vmin: float, vmax: float, n_obs: int,
+                     marks = (), xmax: float | None = None):
+        """Draw the ``E(m, n)`` matrix on ``ax`` (the axes are the two orders).
+
+        The best pair is starred (sized to the grid cell) and each pair in
+        ``marks`` (other than the best) is ringed; returns the mappable for a
+        shared colour bar.  ``xmax`` overrides the right x-limit (to crop
+        saturated columns).
+        """
+        Er, mmax, nmax = GridPlt._error_matrix(rows, n_obs)
+        Z = np.clip(np.log10(Er), vmin, vmax)
+        pcm = ax.pcolormesh(np.arange(mmax + 2) - 0.5, np.arange(nmax + 2) - 0.5,
+                            Z, cmap = "viridis", vmin = vmin, vmax = vmax,
+                            shading = "flat")
+        # Admissible orders have m, n >= 2; crop the empty 0/1 columns and mark
+        # only the end orders (2 and the maximum).
+        xhi = xmax if xmax is not None else mmax + 0.5
+        ax.set_xlim(1.5, xhi)
+        ax.set_ylim(1.5, nmax + 0.5)
+        ax.set_xticks([2, xhi - 0.5])
+        ax.set_yticks([2, nmax])
+        best = min((r for r in rows if np.isfinite(r["E"])), key = lambda r: r["E"])
+        # Star sized to the grid cell (one data unit in x/y, in points); with a
+        # fixed aspect this is the smaller dimension of the cell.
+        p0 = ax.transData.transform((0.5, 0.5))
+        ux = abs(ax.transData.transform((1.5, 0.5))[0] - p0[0])
+        uy = abs(ax.transData.transform((0.5, 1.5))[1] - p0[1])
+        ms = 0.9 * min(ux, uy) * 72.0 / ax.figure.dpi
+        ax.plot(best["m"], best["n"], marker = "*", ms = ms,
+                mfc = plt.cm.viridis(1.0), mec = "none")
+        for (m, n) in marks:
+            if (m, n) != (best["m"], best["n"]):
+                ax.plot(m, n, marker = "o", ms = 9, mfc = "none", mec = "white",
+                        mew = 1.6)
+        return pcm
 
     @staticmethod
     def round_box(ax, xy, width, height, rounding_size: float = 0.015,
