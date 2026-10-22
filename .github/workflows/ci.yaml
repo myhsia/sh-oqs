@@ -53,17 +53,6 @@ jobs:
       MPLBACKEND: Agg
     steps:
       - uses: actions/checkout@v7
-      - name: Checkout shared pieces (public)
-        uses: actions/checkout@v7
-        with:
-          repository: myhsia/heomXdmrg-spin_boson
-          path: _public
-      - name: Copy shared pieces
-        run: |
-          mkdir -p source/config source/library
-          cp _public/source/config/*.yaml source/config/
-          cp _public/source/library/qutils.py _public/source/library/fsutils.py \
-             _public/source/library/pltools.py source/library/
       - uses: ./.github/actions/sh-env
       - name: Regression suite
         working-directory: source
