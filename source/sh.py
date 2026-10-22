@@ -55,6 +55,9 @@ def _parse_args():
                         help = "Output time step")
     parser.add_argument("-seed", type = int, default = 0,
                         help = "RNG seed")
+    parser.add_argument("-sampling", choices = ["auto", "quantum", "classical"],
+                        default = "auto",
+                        help = "Bath sampling (default: by case)")
     parser.add_argument("-nproc", type = int, default = 4,
                         help = "Number of cases to run in parallel (default: %(default)s)")
     parser.add_argument("-njobs", type = int, default = -1,
@@ -164,7 +167,8 @@ RUNLIST = [
 ]
 def run(prefix: str, methods = METHODS, cases = CASES, n_traj = None,
         N: int = 200, wmax_factor: float = 10.0, dt: float = 0.005,
-        seed: int = 0, nproc: int = 4, njobs: int = -1):
+        seed: int = 0, nproc: int = 4, njobs: int = -1,
+        sampling: str = "auto"):
     """Run one or more methods across the selected cases for a single config.
 
     ``n_traj`` defaults to the per-method ``N_TRAJ`` budget.  The cases run as
@@ -183,8 +187,13 @@ def run(prefix: str, methods = METHODS, cases = CASES, n_traj = None,
         n_inner = max(1, (os.cpu_count() or 1) // workers)
     for method in methods:
         nt = N_TRAJ[method] if n_traj is None else n_traj
-        specs = [(prefix, method, *_CASE_MATRIX[case], nt, N, wmax_factor,
-                  dt, seed, n_inner) for case in cases]
+        specs = []
+        for case in cases:
+            quantum, anharm = _CASE_MATRIX[case]
+            if sampling != "auto":
+                quantum = sampling == "quantum"
+            specs.append((prefix, method, quantum, anharm, nt, N, wmax_factor,
+                          dt, seed, n_inner))
         if workers == 1 or len(specs) == 1:
             for spec in specs:
                 t, tag, res = _compute(*spec)
@@ -202,6 +211,7 @@ if __name__ == "__main__":
     for prefix in ([args.prefix] if args.prefix else RUNLIST):
         run(prefix, methods = methods, cases = CASES, n_traj = args.n_traj,
             N = args.N, wmax_factor = args.wmax_factor, dt = args.dt,
-            seed = args.seed, nproc = args.nproc, njobs = args.njobs)
+            seed = args.seed, nproc = args.nproc, njobs = args.njobs,
+            sampling = args.sampling)
 
 # %%
