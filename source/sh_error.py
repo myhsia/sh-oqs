@@ -123,11 +123,14 @@ def main():
         for method in args.methods:
             for label in args.labels:
                 key = method if not label else f"{method}[{label}]"
-                got = [error(prefix, method, c, label) for c in CASES]
-                got = [g for g in got if g is not None]
+                per = {c: error(prefix, method, c, label) for c in CASES}
+                got = [v for v in per.values() if v is not None]
                 if not got:
                     continue
-                rows[key] = {"E": float(np.mean(got)), "tf": float(
+                rows[key] = {"E": float(np.mean(got)),
+                             "cases": {c: v for c, v in per.items()
+                                       if v is not None},
+                             "tf": float(
                     parse_xlims(load_config(prefix)["xlims"],
                                 reorder = True)[0][1])}
     if os.path.exists(JSON):
