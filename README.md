@@ -1,4 +1,4 @@
-# sh-oqs
+# sh4oqs
 
 Reference **surface-hopping** dynamics for the spin-boson model used by the MKCT manuscript:
 fewest-switches surface hopping (FSSH) with classical bath nuclei, covering the quantum/classical
@@ -51,9 +51,9 @@ python library/surface_hopping/validation.py
 ## Shared pieces
 
 `source/heom.py`, `source/config/` and `source/library/{qutils,fsutils,pltools,extended_heom}.py` are copies of
-the canonical files in the private `mkct-oqs` repository.  After a change there, run
+the canonical files in the private `mkct4oqs` repository.  After a change there, run
 `bash tools/sync_from_mkct.sh` and commit (the public
-[heomXdmrg-spin_boson](https://github.com/myhsia/heomXdmrg-spin_boson) mirror does the same).
+[dmrg4oqs](https://github.com/myhsia/dmrg4oqs) mirror does the same).
 
 ## Environment
 

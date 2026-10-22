@@ -1,9 +1,9 @@
-# sh-oqs
+# sh4oqs
 
 Standalone **surface-hopping** reference dynamics for the spin-boson model: FSSH (MASH retained
 but disabled) with a classical bath sampled per mode, for the harmonic/anharmonic and
 linear/quadratic coupling cases.  The companion repositories are the private memory-kernel code
-(`mkct-oqs`) and the public `heomXdmrg-spin_boson` (HEOM / MPS-tDMRG; the shared
+(`mkct4oqs`) and the public `dmrg4oqs` (HEOM / MPS-tDMRG; the shared
 `source/config/` and `source/library/{qutils,fsutils,pltools,extended_heom}.py`).
 
 Scientific background and methodology are described in
@@ -22,10 +22,10 @@ All code is under `source/`, the working directory for the drivers (paths such a
 
 Shared pieces (`source/heom.py`, `source/config/`, and
 `source/library/{qutils,fsutils,pltools,extended_heom}.py`) are **copies** of the canonical files in the private
-`mkct-oqs` repository, so a public clone and the CI work without a token.
+`mkct4oqs` repository, so a public clone and the CI work without a token.
 
-> **Sync reminder.**  After changing any of them in `mkct-oqs`, run
-> `bash tools/sync_from_mkct.sh` here, then commit and push (same for `heomXdmrg-spin_boson`).
+> **Sync reminder.**  After changing any of them in `mkct4oqs`, run
+> `bash tools/sync_from_mkct.sh` here, then commit and push (same for `dmrg4oqs`).
 
 ## Conventions
 
