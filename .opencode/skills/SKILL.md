@@ -56,9 +56,9 @@ schema, `<method>` = `fssh` or `mash`).
   diverges at the Verlet stability limit.
 - **Caveat:** classical nuclei, so this is a cross-check rather than an exact reference;
   it is reliable mainly for slow baths and high temperature.
-- The shared `config/`, `qutils.py`, `fsutils.py` and `pltools.py` are symlinked locally from
-  the public `heomXdmrg-spin_boson` repository (gitignored); CI checks that repository out and
-  copies them.
+- The shared pieces (`heom.py`, `config/`, `qutils.py`, `fsutils.py`, `pltools.py`) are copies of
+  the canonical files in `mkct-oqs`; after a change there, run `tools/sync_from_mkct.sh` and
+  commit.
 - System-wide conventions (repo etiquette, Python style, git/PR, LaTeX, tooling) are in the
   maintainer's workspace `repo-rules` skill.
 

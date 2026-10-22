@@ -1,0 +1,12 @@
+base: "A-base_line"
+Pade_m: 4
+Pade_n: 9
+# Symbolic Moments
+beta: "*2.0"
+scale: "*2.0"
+# MKCT Plotting
+xlims:
+  - [0, 16]
+  - 4
+absradius: 3
+absbias: 0

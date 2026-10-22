@@ -1,0 +1,21 @@
+# Padé
+Pade_m: 9
+Pade_n: 14
+# Symbolic Moments
+linear: true
+quadratic: false
+Delta: 1.0
+epsilon: 1.0
+beta: 0.6
+lambd: 0.4
+theta_B: 1.33
+wB: 1.0
+wC: 4.0
+anharmon: 0.4
+scale: 0.3
+# MKCT Plotting
+xlims:
+  - [0, 12]
+  - 4
+absradius: 3
+absbias: 0

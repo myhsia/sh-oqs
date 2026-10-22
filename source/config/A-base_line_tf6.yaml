@@ -1,0 +1,6 @@
+base: "A-base_line"
+# Shorter window for the converged MPS/tDMRG comparison: with wmax_factor = 6
+# (w_max = 24) and N = 32 the bath recurrence is at ~8.4, so t <= 6 is safe.
+xlims:
+  - [0, 6]
+  - 2

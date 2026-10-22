@@ -3,7 +3,7 @@
 Standalone **surface-hopping** reference dynamics for the spin-boson model: FSSH (MASH retained
 but disabled) with a classical bath sampled per mode, for the harmonic/anharmonic and
 linear/quadratic coupling cases.  The companion repositories are the private memory-kernel code
-(`mkct-oqs`) and the public `heomXdmrg-spin_boson` (HEOM / MPS-tDMRG, which also owns the shared
+(`mkct-oqs`) and the public `heomXdmrg-spin_boson` (HEOM / MPS-tDMRG; the shared
 `source/config/` and `source/library/{qutils,fsutils,pltools}.py`).
 
 Scientific background and methodology are described in
@@ -20,9 +20,12 @@ All code is under `source/`, the working directory for the drivers (paths such a
   both enabled in `METHODS`, plus `validation.py` (regression suite).
 - `source/environment.yaml`, `source/requirements.txt` — the `sh` conda environment.
 
-Shared, non-sensitive pieces owned by the public `heomXdmrg-spin_boson` repository and symlinked
-here (gitignored): `source/config/` and `source/library/{qutils,fsutils,pltools}.py`.  CI checks
-that repository out anonymously and copies them (no token).
+Shared pieces (`source/heom.py`, `source/config/`, and
+`source/library/{qutils,fsutils,pltools}.py`) are **copies** of the canonical files in the private
+`mkct-oqs` repository, so a public clone and the CI work without a token.
+
+> **Sync reminder.**  After changing any of them in `mkct-oqs`, run
+> `bash tools/sync_from_mkct.sh` here, then commit and push (same for `heomXdmrg-spin_boson`).
 
 ## Conventions
 

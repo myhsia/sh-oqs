@@ -1,0 +1,11 @@
+base: "A-base_line"
+Pade_m: 4
+Pade_n: 8
+# Symbolic Moments
+epsilon: "*0.0"
+# MKCT Plotting
+xlims:
+  - [0, 8]
+  - 4
+absradius: 3
+absbias: 0
