@@ -41,6 +41,7 @@ def _mash_traj_numba(Delta, omega, c, q, p, S0, t, aq,
     n = omega.shape[0]
     P_plus = np.empty(nT); P_minus = np.empty(nT)
     Sx = np.empty(nT); Sy = np.empty(nT); Sz = np.empty(nT); Qh = np.empty(nT)
+    E = np.empty(nT)
 
     cc2 = 0.0
     for j in range(n):
@@ -69,6 +70,13 @@ def _mash_traj_numba(Delta, omega, c, q, p, S0, t, aq,
             Hy += c[j] * sinphi * dAdQ / (2.0 * R) * omega[j] * p[j]
         Hy *= 2.0
         Qh[it] = Q
+        # total energy: bath (harmonic + quartic) + Vbar + Vz sgn(Sz)
+        e = Vz if Sz0 > 0.0 else -Vz
+        e += pv0 + pv1 * Q + pv2 * Q * Q
+        for j in range(n):
+            e += 0.5 * omega[j] * (p[j] * p[j] + q[j] * q[j]) \
+                 + 0.25 * omega[j] * aq * q[j] ** 4
+        E[it] = e
         if Sz0 > 0.0:
             P_plus[it] = 1.0; P_minus[it] = 0.0
         else:
@@ -155,7 +163,7 @@ def _mash_traj_numba(Delta, omega, c, q, p, S0, t, aq,
                 for j in range(n):
                     q[j] += dt * (omega[j] * p[j])
 
-    return P_plus, P_minus, Sx, Sy, Sz, Qh
+    return P_plus, P_minus, Sx, Sy, Sz, Qh, E
 
 
 def _model_default(epsilon):
@@ -317,7 +325,7 @@ def run_mash(epsilon, Delta, omega, c, beta, tlist, init_hemisphere=None,
 
 
 def mash_trajectory(epsilon, Delta, omega, c, q, p, S, tlist, anharmon=0.0,
-                    model=None, meanfield=False):
+                    model=None, meanfield=False, return_energy=False):
     """Numba-accelerated MASH trajectory (see ``_mash_trajectory_py``).
 
     ``model`` is an optional ``(pv0,pv1,pv2,pa0,pa1,pa2)`` coefficient tuple
@@ -329,11 +337,12 @@ def mash_trajectory(epsilon, Delta, omega, c, q, p, S, tlist, anharmon=0.0,
     q = np.ascontiguousarray(q, dtype=float)
     p = np.ascontiguousarray(p, dtype=float)
     S = np.ascontiguousarray(S, dtype=float)
-    return _mash_traj_numba(Delta, np.ascontiguousarray(omega, dtype=float),
+    out = _mash_traj_numba(Delta, np.ascontiguousarray(omega, dtype=float),
                             np.ascontiguousarray(c, dtype=float), q, p, S,
                             np.ascontiguousarray(tlist, dtype=float),
                             float(anharmon) ** 2,
                             pv0, pv1, pv2, pa0, pa1, pa2, bool(meanfield))
+    return out if return_energy else out[:6]
 
 
 def run_density_matrix(epsilon, Delta, omega, c, beta, tlist, rho_S_dia,
