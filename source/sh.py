@@ -53,7 +53,7 @@ def _parse_args():
     parser.add_argument("-wmax_factor", type = float, default = 10.0,
                         help = "Quadrature cutoff, in units of wC")
     parser.add_argument("-dt", type = float, default = 0.005,
-                        help = "Output time step")
+                        help = "Output time step (default: 0.01)")
     parser.add_argument("-seed", type = int, default = 0,
                         help = "RNG seed")
     parser.add_argument("-sampling", choices = ["auto", "quantum", "classical"],
@@ -70,7 +70,7 @@ def _parse_args():
 
 def _compute(prefix: str, method: str = "mash", quantum: bool = True,
              anharm: bool = False, n_traj: int = 40000, N: int = 200,
-             wmax_factor: float = 10.0, dt: float = 0.005, seed: int = 0,
+             wmax_factor: float = 10.0, dt: float = 0.01, seed: int = 0,
              n_jobs: int = 1, label: str = ""):
     """Compute one ``(prefix, method, case)``; return ``(t, tag, result)``."""
     # 3. Parameters (physical values; ``scale`` is a numerical device only)
@@ -101,7 +101,7 @@ def _compute(prefix: str, method: str = "mash", quantum: bool = True,
     # The quartic stiffening raises the fastest effective frequency, so an
     # anharmonic run needs a shorter step than a harmonic one.
     if a > 0.0:
-        dt = min(dt, 0.15 / float(np.max(omega)))
+        dt = min(dt, 0.4 / float(np.max(omega)))
     t     = np.linspace(0.0, tf, int(round(tf / dt)) + 1)
 
     tag = f"{method}_{_case_name(quantum, anharm)}"
@@ -149,7 +149,7 @@ def _save(prefix: str, tag: str, t, res):
 
 def main(prefix: str, method: str = "mash", quantum: bool = True,
          anharm: bool = False, n_traj: int = 40000, N: int = 200,
-         wmax_factor: float = 10.0, dt: float = 0.005, seed: int = 0,
+         wmax_factor: float = 10.0, dt: float = 0.01, seed: int = 0,
          n_jobs: int = 1):
     t, tag, res = _compute(prefix, method, quantum, anharm, n_traj, N,
                            wmax_factor, dt, seed, n_jobs)
@@ -176,7 +176,7 @@ RUNLIST = [
     # "K-linear_quad",
 ]
 def run(prefix: str, methods = METHODS, cases = CASES, n_traj = None,
-        N: int = 200, wmax_factor: float = 10.0, dt: float = 0.005,
+        N: int = 200, wmax_factor: float = 10.0, dt: float = 0.01,
         seed: int = 0, nproc: int = 4, njobs: int = -1,
         sampling: str = "auto", label: str = ""):
     """Run one or more methods across the selected cases for a single config.
