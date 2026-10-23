@@ -9,7 +9,7 @@ from qutip import expect, Qobj
 from qutip.core.environment import OhmicEnvironment
 from qutip.solver.heom import HEOMSolver
 sys.pycache_prefix = os.path.abspath("./output/pycache")
-from extended_heom import ExtendedHEOMSolver, build_ohmic_bath
+from extended_deom import ExtendedDEOMSolver, build_ohmic_bath
 from fsutils import load_config, save_time
 from qutils import spin_boson, basis, Pauli, qubit, parse_coeffs
 from pltools import parse_xlims
@@ -97,14 +97,16 @@ def main(prefix: str):
             Ni       = 4,
             separate = True,
         )
-    #### 4.1.2 Use the approximated environment to set up HEOM solver
+    #### 4.1.2 Set up the reference solver
+    ####       - linear coupling: qutip's standard HEOM
+    ####       - polynomial coupling: the extended DEOM (dissipaton) hierarchy
     if quadratic:
         default_options = {
             "rtol": 1e-9,
             "atol": 1e-11,
-            "method": "DOP853",
+            "chunk": 200,
         }
-        HEOMMats = ExtendedHEOMSolver(
+        RefMats = ExtendedDEOMSolver(
             Qobj(Hs), Qobj(V), a0, a1, a2, eta, gamma, q2,
             max_depth = Lmax, options = default_options)
     else:
@@ -116,21 +118,21 @@ def main(prefix: str):
             "method": "vern9",
             "progress_bar": "enhanced",
         }
-        HEOMMats = HEOMSolver(
+        RefMats = HEOMSolver(
             Qobj(Hs), (approx_env, Qobj(V)),
             max_depth = Lmax, options = default_options)
     ## 4.2 Propagate
     #### - To calculate <A(t) B(0)>, we evolve Brho0 forward in time and
     ####   measure A at each time step
     # Auto-correlation <Sx(t)Sx(0)>: evolve Brho0["corr"]
-    heom_corr = HEOMMats.run(Brho0["corr"], tlist * tscale)
+    heom_corr = RefMats.run(Brho0["corr"], tlist * tscale)
     C_mu = expect(A["corr"], heom_corr.states)
     C_mu /= C_mu[0]
     # Cross-correlation <Sx(t)Sy(0)>: evolve Brho0["xorr"]
-    heom_xorr = HEOMMats.run(Brho0["xorr"], tlist * tscale)
+    heom_xorr = RefMats.run(Brho0["xorr"], tlist * tscale)
     C_x = expect(A["xorr"], heom_xorr.states)
     # Single-time quantities: evolve Brho0["+"]
-    res_heom = HEOMMats.run(Brho0["+"], tlist * tscale)
+    res_heom = RefMats.run(Brho0["+"], tlist * tscale)
     P0_t   = expect(A["pop"][0], res_heom.states)
     P1_t   = expect(A["pop"][1], res_heom.states)
     cohe_p = expect(A["+"], res_heom.states)

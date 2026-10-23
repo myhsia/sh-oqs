@@ -50,7 +50,7 @@ python library/surface_hopping/validation.py
 
 ## Shared pieces
 
-`source/heom.py`, `source/config/` and `source/library/{qutils,fsutils,pltools,extended_heom}.py` are copies of
+`source/reference.py`, `source/config/` and `source/library/{qutils,fsutils,pltools,extended_deom}.py` are copies of
 the canonical files in the private `mkct4oqs` repository.  After a change there, run
 `bash tools/sync_from_mkct.sh` and commit (the public
 [dmrg4oqs](https://github.com/myhsia/dmrg4oqs) mirror does the same).

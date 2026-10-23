@@ -122,33 +122,50 @@ def load_group(path):
     return series, meta
 
 
-def moments_filename(projection: str = "matrix") -> str:
-    """Canonical moments archive ``moments.{mat,scl}.npz`` (one array per case),
-    where ``projection`` is ``"matrix"`` (``mat``) or ``"scalar"`` (``scl``).
+def moments_filename(method: str, projection: str = "matrix") -> str:
+    """Canonical moments archive ``moments.<method>.{mat,scl}.npz``.
+
+    ``method`` is ``"block_sp"`` or ``"symbolic"`` and ``projection`` is
+    ``"matrix"`` (``mat``) or ``"scalar"`` (``scl``); both methods' archives
+    live in the same ``output/data/<prefix>/`` directory, one array per case.
     """
-    return f"moments.{'scl' if projection == 'scalar' else 'mat'}.npz"
+    return f"moments.{method}.{'scl' if projection == 'scalar' else 'mat'}.npz"
 
 
-def save_moments(path, series) -> None:
+def save_moments(path, series, timing: dict | None = None) -> None:
     """Save one moments array per case, each under its case name.
 
     ``series`` maps a case (``qhm``/``qah``/``chm``/``cah``) to its array; a
     scalar ``(n_moments,)`` or matrix ``(n_moments, d, d)`` complex array keeps
-    its native shape (no flattening).
+    its native shape (no flattening).  ``timing`` optionally maps a case to its
+    ``(n_orders + 1, 3)`` array of ``[order, cpu_s, wall_s]`` (order 0 is the
+    setup), stored as ``timing_<case>``.
     """
     filepath = Path(path)
     ensure_dir(filepath.parent)
-    np.savez(filepath, **{str(k): np.asarray(v) for k, v in series.items()})
+    data = {str(k): np.asarray(v) for k, v in series.items()}
+    for case, arr in (timing or {}).items():
+        data[f"timing_{case}"] = np.asarray(arr, dtype=float)
+    np.savez(filepath, **data)
 
 
 def load_moments(path) -> dict:
-    """Load a moments archive as ``{case: array}``.
+    """Load a moments archive as ``{case: array}`` (the ``timing_*`` keys are
+    skipped; use :func:`load_timing` for those).
 
     Each array keeps its native shape: ``(n_moments, d, d)`` for the matrix
     projection or ``(n_moments,)`` for the scalar projection.
     """
     with np.load(path) as f:
-        return {k: f[k] for k in f.files}
+        return {k: f[k] for k in f.files if not k.startswith("timing_")}
+
+
+def load_timing(path) -> dict:
+    """Load the per-case timing arrays ``{case: (n_orders + 1, 3)}`` from a
+    moments archive (columns ``order, cpu_s, wall_s``; row 0 is the setup)."""
+    with np.load(path) as f:
+        return {k[len("timing_"):]: f[k] for k in f.files
+                if k.startswith("timing_")}
 
 
 def tab_str(s, N = 80, char = '=', border = '!'):

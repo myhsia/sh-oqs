@@ -58,7 +58,7 @@ def _interp(yh, th, t):
 
 
 def scan_config(prefix, observables, dt=1e-2, tf_factor=20.0, solve=None,
-                data_dir="./output/data"):
+                data_dir="./output/data", method="block_sp"):
     """Return ``[{'m','n','Nmax','E','tf'}]`` over all admissible Pade orders.
 
     ``observables`` supplies the ``A``/``Brho0`` operator tables and the
@@ -75,7 +75,7 @@ def scan_config(prefix, observables, dt=1e-2, tf_factor=20.0, solve=None,
     rescale = params["scale"]
     tf = parse_xlims(params["xlims"], reorder=True)[0][1]
     d = os.path.join(data_dir, prefix) + os.sep
-    mom = load_moments(d + moments_filename("matrix"))["qhm"]
+    mom = load_moments(d + moments_filename(method, "matrix"))["qhm"]
     N = mom.shape[0]
     Mmax = N - 2
     th, ph = load_npz(d + "pop_heom.npz")

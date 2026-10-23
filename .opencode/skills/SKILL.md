@@ -56,7 +56,7 @@ schema, `<method>` = `fssh` or `mash`).
   diverges at the Verlet stability limit.
 - **Caveat:** classical nuclei, so this is a cross-check rather than an exact reference;
   it is reliable mainly for slow baths and high temperature.
-- The shared pieces (`heom.py`, `config/`, `qutils.py`, `fsutils.py`, `pltools.py`, `extended_heom.py`) are copies of
+- The shared pieces (`reference.py`, `config/`, `qutils.py`, `fsutils.py`, `pltools.py`, `extended_deom.py`) are copies of
   the canonical files in `mkct4oqs`; after a change there, run `tools/sync_from_mkct.sh` and
   commit.
 - System-wide conventions (repo etiquette, Python style, git/PR, LaTeX, tooling) are in the

@@ -4,7 +4,7 @@ Standalone **surface-hopping** reference dynamics for the spin-boson model: FSSH
 but disabled) with a classical bath sampled per mode, for the harmonic/anharmonic and
 linear/quadratic coupling cases.  The companion repositories are the private memory-kernel code
 (`mkct4oqs`) and the public `dmrg4oqs` (HEOM / MPS-tDMRG; the shared
-`source/config/` and `source/library/{qutils,fsutils,pltools,extended_heom}.py`).
+`source/config/` and `source/library/{qutils,fsutils,pltools,extended_deom}.py`).
 
 Scientific background and methodology are described in
 [`.opencode/skills/SKILL.md`](./.opencode/skills/SKILL.md); load the `surface-hopping` skill.
@@ -20,8 +20,8 @@ All code is under `source/`, the working directory for the drivers (paths such a
   both enabled in `METHODS`, plus `validation.py` (regression suite).
 - `source/environment.yaml`, `source/requirements.txt` — the `sh` conda environment.
 
-Shared pieces (`source/heom.py`, `source/config/`, and
-`source/library/{qutils,fsutils,pltools,extended_heom}.py`) are **copies** of the canonical files in the private
+Shared pieces (`source/reference.py`, `source/config/`, and
+`source/library/{qutils,fsutils,pltools,extended_deom}.py`) are **copies** of the canonical files in the private
 `mkct4oqs` repository, so a public clone and the CI work without a token.
 
 > **Sync reminder.**  After changing any of them in `mkct4oqs`, run
