@@ -66,17 +66,20 @@ def _series(prefix, method, case, quantity, label=""):
                              quantity + "_mkct.npz")
         return data[case]
     tag = f"{method}_{case}" + (f"_{label}" if label else "")
-    merged = d + "cohe" if quantity == "cohem" else d + quantity
+    merged = d + ("cohe" if quantity == "cohem" else quantity)
     merged += f"_{method}" + (f"_{label}" if label else "") + ".npz"
-    if os.path.exists(merged):
-        data, _ = load_group(merged)
-        t, y = data[case]
-        if quantity == "cohem":
-            y = y[1]                     # branch ("+", "-") on the leading axis
-        elif quantity == "cohe":
-            y = y[0]
-        return t, y
-    return load_npz(d + f"{quantity}_{tag}.npz")
+    if not os.path.exists(merged):
+        if not label:
+            raise FileNotFoundError(f"{merged}: run sh_merge.py first")
+        # labelled sweep runs stay per-case (they are not merged)
+        return load_npz(d + f"{quantity}_{tag}.npz")
+    data, _ = load_group(merged)
+    t, y = data[case]
+    if quantity == "cohem":
+        y = y[1]                     # branch ("+", "-") on the leading axis
+    elif quantity == "cohe":
+        y = y[0]
+    return t, y
 
 
 def _heom(prefix, quantity, tf):

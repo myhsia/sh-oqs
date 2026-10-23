@@ -55,7 +55,7 @@ def _load_avg(files):
     return t, y
 
 
-def merge_config(prefix, methods, labels, root):
+def merge_config(prefix, methods, labels, root, clean=False):
     directory = os.path.join(root, prefix)
     made = []
     for method in methods:
@@ -84,6 +84,11 @@ def merge_config(prefix, methods, labels, root):
                         continue
                     t, y = _load_avg(files)
                     series[q][case] = (t, y)
+            if clean and label == "":
+                for case in CASES:
+                    for q in QUANTITIES:
+                        for f in _seed_files(directory, q, method, case, label):
+                            os.remove(f)
             for q in ("pop", "cohe", "corr", "xorr"):
                 if len(series[q]) != len(CASES):
                     continue
@@ -102,13 +107,16 @@ def main():
                     default = ["fssh", "mash", "ehrenfest", "lsc"])
     ap.add_argument("--labels", nargs = "*", default = [""])
     ap.add_argument("--root", default = "./output/data")
+    ap.add_argument("--clean", action = "store_true",
+                    help = "delete the per-case files once merged")
     args = ap.parse_args()
     configs = args.configs or sorted(
         d for d in os.listdir(args.root)
         if os.path.isdir(os.path.join(args.root, d)))
     total = 0
     for prefix in configs:
-        made = merge_config(prefix, args.methods, args.labels, args.root)
+        made = merge_config(prefix, args.methods, args.labels, args.root,
+                            clean = args.clean)
         if made:
             print(f"[{prefix}] merged {len(made)} archives", flush = True)
             total += len(made)
