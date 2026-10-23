@@ -38,7 +38,7 @@ jobs:
         run: |
           tar -czf sh-data-all.tar.gz -C dist .
           ls -l sh-data-all.tar.gz
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: sh-data-all
           path: sh-data-all.tar.gz
