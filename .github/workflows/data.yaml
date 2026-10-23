@@ -99,7 +99,7 @@ jobs:
     timeout-minutes: 350
     strategy:
       fail-fast: false
-      max-parallel: 10
+      max-parallel: 20
       matrix:
         config: ${{ fromJSON(needs.plan.outputs.configs) }}
         case: ${{ fromJSON(needs.plan.outputs.cases) }}

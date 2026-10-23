@@ -1,0 +1,45 @@
+name: Collect
+
+# Pack the artifacts of several Data runs into one tarball, so a batch that was
+# dispatched as per-config runs is a single download.
+on:
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: "Space-separated Data run ids to pack (their sh-data artifacts)."
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  collect:
+    name: Collect
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Download the per-run tarballs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUNS: ${{ inputs.runs }}
+        run: |
+          mkdir -p dist
+          for id in $RUNS; do
+            echo "== run $id"
+            gh run download "$id" -R "${{ github.repository }}" -n sh-data -D "part/$id" || true
+            if [ -f "part/$id/sh-data.tar.gz" ]; then
+              tar -xzf "part/$id/sh-data.tar.gz" -C dist
+            fi
+          done
+          du -sh dist
+      - name: Pack
+        run: |
+          tar -czf sh-data-all.tar.gz -C dist .
+          ls -l sh-data-all.tar.gz
+      - uses: actions/upload-artifact@v5
+        with:
+          name: sh-data-all
+          path: sh-data-all.tar.gz
+          if-no-files-found: error
+          retention-days: 30
