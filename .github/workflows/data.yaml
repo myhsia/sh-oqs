@@ -1,4 +1,5 @@
 name: Data
+run-name: Data · ${{ inputs.configs || 'RUNLIST' }} · ${{ inputs.methods }}${{ inputs.label && format(' · {0}', inputs.label) || '' }}
 
 on:
   workflow_dispatch:

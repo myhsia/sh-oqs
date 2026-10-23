@@ -1,4 +1,5 @@
 name: Collect
+run-name: Collect · ${{ inputs.runs }}
 
 # Pack the artifacts of several Data runs into one tarball, so a batch that was
 # dispatched as per-config runs is a single download.
