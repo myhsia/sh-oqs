@@ -588,65 +588,86 @@ class ExtendedDEOMSolver:
         """Adaptive ``solve_ivp`` on the assembled hierarchy generator.
 
         The generator is built from the edge lists on first use (per-DDO
-        column stacking), and the march is stepped in chunks of output points
-        so that the solution array stays bounded.
+        column stacking) and rebuilt whenever filtering drops DDOs.  The march
+        is stepped in chunks of output points so that the solution array stays
+        bounded.
         """
         from scipy.integrate import solve_ivp
 
-        shape = Y.shape
+        d = self.d
+        chunk = int(opts.get("chunk", 200))
+        method_scipy = opts.get("method_scipy", "DOP853")
+        rtol = opts.get("rtol", 1e-9)
+        atol = opts.get("atol", 1e-11)
+        ferr = opts.get("ferr", None)
+        prune_frac = float(opts.get("prune_frac", 0.1))
 
         def to_vec(A):
             return A.transpose(0, 2, 1).reshape(-1)
 
         def from_vec(v):
-            return v.reshape(shape).transpose(0, 2, 1)
+            return v.reshape((self.nstates, d, d)).transpose(0, 2, 1)
 
-        flat = to_vec(Y)
-        chunk = int(opts.get("chunk", 200))
-        method = opts.get("method_scipy", "DOP853")
-        rtol = opts.get("rtol", 1e-9)
-        atol = opts.get("atol", 1e-11)
-
-        L = getattr(self, "L", None)
-        if L is None:
-            self._assemble()
-            L = self.L
-
-        def f(t, x):
-            return L @ x
-
-        y = flat
+        y = to_vec(Y)
         i = 1
         while i < len(tlist):
             j = min(i + chunk, len(tlist))
-            sub = tlist[i:j]
-            sol = solve_ivp(f, (tlist[i - 1], tlist[j - 1]), y, t_eval=sub,
-                            method=method, rtol=rtol, atol=atol)
+            L = getattr(self, "L", None)
+            if L is None:
+                self._assemble()
+                L = self.L
+
+            def f(t, x, _L=L):
+                return _L @ x
+
+            sol = solve_ivp(f, (tlist[i - 1], tlist[j - 1]), y, t_eval=tlist[i:j],
+                            method=method_scipy, rtol=rtol, atol=atol)
             if not sol.success:
                 raise RuntimeError(f"Integration failed: {sol.message}")
             y = sol.y[:, -1]
-            for m in range(len(sub)):
+            for m in range(j - i):
                 out[i + m] = from_vec(sol.y[:, m])[0]
+            if ferr is not None:
+                cur = from_vec(y)
+                pruned = self._prune(cur, ferr, prune_frac)
+                if pruned is not cur:
+                    y = to_vec(pruned)
             i = j
+
+    def _scale(self):
+        """``c_n = sqrt(prod_k n_k! |eta_k|^{n_k})`` for the current keys.
+
+        ``Y_n = rho_n / c_n``, so ``max|Y_n| * c_n`` is the physical magnitude of
+        the DDO and is what a truncation threshold must compare against.
+        """
+        from scipy.special import gammaln
+        n = self.keys.astype(float)
+        log_abs_eta = np.log(np.maximum(np.abs(self.eta), 1e-300))
+        return np.exp(0.5 * (gammaln(n + 1.0).sum(axis=1) + n @ log_abs_eta))
 
     # -- filtering ---------------------------------------------------------
     def _prune(self, Y, ferr, prune_frac):
-        """Drop DDOs below ``ferr`` and rebuild the hierarchy (in place)."""
-        keep = (np.abs(Y).max(axis=(1, 2)) > ferr)
+        """Drop DDOs below ``ferr`` and rebuild the hierarchy in place.
+
+        Returns the compacted state; ``self.nstates``/``self.L`` follow.  In the
+        dissipaton normalisation a DDO's magnitude already carries the
+        ``1/sqrt(prod n! eta^n)`` shrink, so one absolute threshold is meaningful
+        across tiers.
+        """
+        keep = (np.abs(Y).max(axis=(1, 2)) * self._scale() > ferr)
         keep[0] = True
-        dead = 1.0 - keep.mean()
+        dead = 1.0 - float(keep.mean())
         if dead <= prune_frac:
             return Y
+        n_before = self.nstates
+        self.keys = self.keys[keep]
+        self.nstates = self.keys.shape[0]
+        self.dim = self.nstates * self.d * self.d
+        self.tot = self.keys.sum(axis=1)
+        self._build_adjacency()
+        self.bound = self._spectral_bound()
+        self.L = None
         if self.verbose:
-            print(f"[ExtDEOM] prune {self.nstates - int(keep.sum())} of "
-                  f"{self.nstates} DDOs (ferr={ferr:g})")
-        # rebuild the truncated hierarchy on the survivor keys
-        sub = ExtendedDEOMSolver.__new__(ExtendedDEOMSolver)
-        sub.__dict__.update(self.__dict__)
-        sub.keys = self.keys[keep]
-        sub.nstates = sub.keys.shape[0]
-        sub.dim = sub.nstates * self.d * self.d
-        sub.tot = sub.keys.sum(axis=1)
-        sub._build_adjacency()
-        self.__dict__.update(sub.__dict__)
+            print(f"[ExtDEOM] prune {n_before - self.nstates} of {n_before} "
+                  f"DDOs (ferr={ferr:g})")
         return Y[keep].copy()
