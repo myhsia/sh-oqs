@@ -87,9 +87,11 @@ def build_ohmic_bath(alpha, wc, beta, tmax, Nr=6, method="espira-I",
     Returns
     -------
     eta, gamma : ndarray
-        Complex coefficients and (conjugate-closed) exponents of C(t).
+        Complex coefficients and (conjugate-closed) exponents of C(t).  The
+        exponents come from qutip's fit; the coefficients are refitted to the
+        full complex C(t) so that its imaginary (dissipative) part is included.
     q2 : float
-        Thermal expectation <q^2> = C(0).
+        Thermal expectation <q^2>, taken from the fitted kernel.
     env : OhmicEnvironment
     approx : ExponentialBosonicEnvironment
     info : dict
@@ -98,12 +100,26 @@ def build_ohmic_bath(alpha, wc, beta, tmax, Nr=6, method="espira-I",
 
     env = OhmicEnvironment(T=1.0 / beta, alpha=alpha, wc=wc, s=1.0)
     tlist = np.linspace(0.0, tmax, nfit)
+    # ``separate=False`` gives a conjugate-closed exponent set, which is what the
+    # hierarchy needs, but its amplitudes reproduce only the real part of C(t).
+    # The amplitudes are therefore refitted (least squares, complex) to the full
+    # complex correlation function; the exponents stay conjugate closed.
     approx, info = env.approximate(
         method=method, tlist=tlist, separate=False, Nr=Nr, combine=combine)
-
-    eta = np.array([exp.coefficient for exp in approx.exponents], dtype=complex)
     gamma = np.array([exp.vk for exp in approx.exponents], dtype=complex)
-    q2 = float(np.real(env.correlation_function(0.0)))
+
+    tfit = np.linspace(0.0, tmax, nfit)
+    cfun = np.array([env.correlation_function(t) for t in tfit], dtype=complex)
+    basis = np.exp(-np.outer(tfit, gamma))
+    eta, *_ = np.linalg.lstsq(basis, cfun, rcond=None)
+    fit_err = float(np.abs(basis @ eta - cfun).max())
+    if fit_err > 0.05 * float(np.abs(cfun).max()):
+        raise RuntimeError(
+            f"bath decomposition is inaccurate: max|dC| = {fit_err:.3e}; "
+            "increase Nr")
+
+    # the mean field uses the corner of the fitted kernel, for consistency
+    q2 = float(np.real(eta.sum()))
     return eta, gamma, q2, env, approx, info
 
 
